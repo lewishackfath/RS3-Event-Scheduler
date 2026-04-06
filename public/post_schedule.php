@@ -100,10 +100,11 @@ renderHeader('Discord Publishing');
 <div class="card mb-16">
     <h3 class="mt-0">Cron Commands</h3>
     <div class="muted mb-8">Run these directly from your server cron. No web token is required.</div>
-    <div class="break-all mb-10"><strong>Weekly:</strong> <code>php /mnt/data/work/cron/cron_weekly_summary.php</code></div>
-    <div class="break-all mb-10"><strong>Daily:</strong> <code>php /mnt/data/work/cron/cron_daily_events.php</code></div>
-    <div class="break-all"><strong>Sync Missing:</strong> <code>php /mnt/data/work/cron/cron_sync_discord.php</code></div>
-<div class="muted mt-8">Optional date argument for daily/weekly scripts: <code>php /full/path/to/script.php 2026-04-07</code></div>
+    <?php $cronDir = dirname(__DIR__) . '/cron'; ?>
+    <div class="break-all mb-10"><strong>Weekly:</strong> <code>php <?= e($cronDir . '/cron_weekly_summary.php') ?></code></div>
+    <div class="break-all mb-10"><strong>Daily:</strong> <code>php <?= e($cronDir . '/cron_daily_events.php') ?></code></div>
+    <div class="break-all"><strong>Sync Missing:</strong> <code>php <?= e($cronDir . '/cron_sync_discord.php') ?></code></div>
+<div class="muted mt-8">Optional date argument for daily, weekly, and sync scripts: <code>php /full/path/to/script.php 2026-04-07</code></div>
 </div>
 
 <div class="grid">
