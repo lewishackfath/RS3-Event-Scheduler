@@ -19,6 +19,7 @@ $selectedChannelId = (string) ($formValues['discord_channel_id'] ?? '');
             <div class="field">
                 <label for="event_date">Event Date</label>
                 <input type="date" id="event_date" name="event_date" value="<?= e($localDate) ?>" required>
+                <div class="muted" style="margin-top:6px;">Click the field to open the calendar picker.</div>
             </div>
             <div class="field">
                 <label for="event_time">Event Time (<?= e(appConfig()['clan']['timezone']) ?>)</label>
@@ -81,7 +82,18 @@ $selectedChannelId = (string) ($formValues['discord_channel_id'] ?? '');
     const recurringWrap = document.getElementById('recurring-until-wrap');
     const channelSelect = document.getElementById('discord_channel_id');
     const channelStatus = document.getElementById('channel-picker-status');
+    const eventDateInput = document.getElementById('event_date');
     let controller = null;
+
+    if (eventDateInput) {
+        ['focus', 'click'].forEach(function (evt) {
+            eventDateInput.addEventListener(evt, function () {
+                if (typeof eventDateInput.showPicker === 'function') {
+                    try { eventDateInput.showPicker(); } catch (e) {}
+                }
+            });
+        });
+    }
 
     function hideResults() {
         results.hidden = true;

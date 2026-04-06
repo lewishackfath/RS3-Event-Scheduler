@@ -18,20 +18,36 @@ foreach ($events as $event) {
 
 $prev = $range['week_start_local']->modify('-7 days')->format('Y-m-d');
 $next = $range['week_start_local']->modify('+7 days')->format('Y-m-d');
+$currentWeekDate = $range['week_start_local']->format('Y-m-d');
+$canManage = isAuthenticated();
 
 renderHeader('Weekly Schedule');
 ?>
 <div class="card" style="margin-bottom:16px;">
-    <div class="actions" style="justify-content:space-between;align-items:center;">
+    <div class="actions" style="justify-content:space-between;align-items:center;gap:16px;">
         <div>
             <h2 style="margin:0;">Week of <?= e($range['week_start_local']->format('j F Y')) ?></h2>
             <div class="muted">Timezone: <?= e(appConfig()['clan']['timezone']) ?></div>
+            <?php if (!$canManage): ?>
+                <div class="muted" style="margin-top:6px;">This page is public. Login with Discord to add or manage events.</div>
+            <?php endif; ?>
         </div>
-        <div class="actions">
+        <div class="actions" style="align-items:flex-end;">
+            <form method="get" class="actions" style="align-items:flex-end;">
+                <div>
+                    <label for="week_date" style="margin-bottom:4px;">Jump to Week</label>
+                    <input type="date" id="week_date" name="date" value="<?= e($currentWeekDate) ?>" style="width:auto;min-width:180px;">
+                </div>
+                <button class="btn secondary" type="submit">Go</button>
+            </form>
             <a class="btn secondary" href="?date=<?= e($prev) ?>">Previous Week</a>
             <a class="btn secondary" href="?date=<?= e((new DateTimeImmutable('now', clanTimezone()))->format('Y-m-d')) ?>">Current Week</a>
             <a class="btn secondary" href="?date=<?= e($next) ?>">Next Week</a>
-            <a class="btn" href="event_create.php?date=<?= e($range['week_start_local']->format('Y-m-d')) ?>">Add Event</a>
+            <?php if ($canManage): ?>
+                <a class="btn" href="event_create.php?date=<?= e($range['week_start_local']->format('Y-m-d')) ?>">Add Event</a>
+            <?php else: ?>
+                <a class="btn" href="login.php">Login to Manage</a>
+            <?php endif; ?>
         </div>
     </div>
 </div>
@@ -45,7 +61,7 @@ renderHeader('Weekly Schedule');
         <div class="card day-group">
             <div class="actions" style="justify-content:space-between;align-items:center; margin-bottom:14px;">
                 <h3 style="margin:0;"><?= e($day['label']) ?></h3>
-                <a class="btn secondary" href="event_create.php?date=<?= e($dateKey) ?>">Add Event</a>
+                <?php if ($canManage): ?><a class="btn secondary" href="event_create.php?date=<?= e($dateKey) ?>">Add Event</a><?php endif; ?>
             </div>
             <?php foreach ($day['events'] as $event): $local = utcToClanLocal($event['event_start_utc']); ?>
                 <div class="event-card-row">
@@ -65,10 +81,12 @@ renderHeader('Weekly Schedule');
                                     <span class="badge">Weekly</span>
                                 <?php endif; ?>
                             </div>
+                            <?php if ($canManage): ?>
                             <div class="actions">
                                 <a class="btn secondary" href="event_edit.php?id=<?= (int) $event['id'] ?>">Edit</a>
                                 <a class="btn danger" href="event_delete.php?id=<?= (int) $event['id'] ?>" onclick="return confirm('Delete this event?');">Delete</a>
                             </div>
+                            <?php endif; ?>
                         </div>
                         <div class="event-meta-grid">
                             <div><span class="muted">Event Date/Time:</span> <?= e($local->format('D j M Y, g:i A')) ?></div>
@@ -85,4 +103,21 @@ renderHeader('Weekly Schedule');
         </div>
     <?php endforeach; ?>
 <?php endif; ?>
+<script>
+(function () {
+    const dateInputs = document.querySelectorAll('input[type="date"]');
+    dateInputs.forEach(function (input) {
+        input.addEventListener('focus', function () {
+            if (typeof input.showPicker === 'function') {
+                try { input.showPicker(); } catch (e) {}
+            }
+        });
+        input.addEventListener('click', function () {
+            if (typeof input.showPicker === 'function') {
+                try { input.showPicker(); } catch (e) {}
+            }
+        });
+    });
+})();
+</script>
 <?php renderFooter(); ?>

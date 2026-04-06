@@ -74,8 +74,10 @@ function renderHeader(string $title): void
     echo '<div class="muted">' . e(appConfig()['app']['name']) . '</div>';
     echo '<div class="nav">';
     echo '<a href="index.php">Weekly Schedule</a>';
-    echo '<a href="event_create.php">Add Event</a>';
-    echo '<a href="post_schedule.php">Post to Discord</a>';
+    if ($user !== null) {
+        echo '<a href="event_create.php">Add Event</a>';
+        echo '<a href="post_schedule.php">Post to Discord</a>';
+    }
     echo '</div></div></div>';
 
     if ($user !== null) {
@@ -85,6 +87,11 @@ function renderHeader(string $title): void
         }
         echo '<div><div>' . e((string) ($user['display_name'] ?? 'Discord User')) . '</div><div class="muted">Authorised via Discord role</div></div>';
         echo '<a class="btn secondary" href="logout.php">Logout</a>';
+        echo '</div>';
+    } else {
+        echo '<div class="userbox">';
+        echo '<div><div>Public Schedule View</div><div class="muted">Login to manage events</div></div>';
+        echo '<a class="btn" href="login.php">Login with Discord</a>';
         echo '</div>';
     }
 
