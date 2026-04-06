@@ -41,9 +41,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 renderHeader('Discord Publishing');
 ?>
-<div class="grid" style="margin-bottom:16px;">
+<div class="grid mb-16">
     <div class="card">
-        <h2 style="margin-top:0;">Weekly Summary</h2>
+        <h2 class="mt-0">Weekly Summary</h2>
         <p class="muted">Posts or updates one summary embed for the selected week.</p>
         <form method="post">
             <input type="hidden" name="action" value="weekly_summary">
@@ -59,7 +59,7 @@ renderHeader('Discord Publishing');
     </div>
 
     <div class="card">
-        <h2 style="margin-top:0;">Day-of Event Publishing</h2>
+        <h2 class="mt-0">Day-of Event Publishing</h2>
         <p class="muted">Creates native external Discord events and posts daily event embeds for the selected day.</p>
         <form method="post">
             <input type="hidden" name="action" value="daily_events">
@@ -76,7 +76,7 @@ renderHeader('Discord Publishing');
 </div>
 
     <div class="card">
-        <h2 style="margin-top:0;">Sync Missing Discord Items</h2>
+        <h2 class="mt-0">Sync Missing Discord Items</h2>
         <p class="muted">Creates any missing daily embeds or native Discord events for today only, while preserving your existing .env Discord channel configuration.</p>
         <form method="post">
             <input type="hidden" name="action" value="sync_pending">
@@ -90,22 +90,22 @@ renderHeader('Discord Publishing');
         </form>
     </div>
 
-<div class="card" style="margin-bottom:16px;">
-    <h3 style="margin-top:0;">Cron URLs</h3>
-    <div class="muted" style="margin-bottom:8px;">Use these with your server cron. They require <code>CRON_TOKEN</code> in your <code>.env</code>.</div>
-    <div style="word-break:break-all;margin-bottom:10px;"><strong>Weekly:</strong> <?= e(appUrl('cron_weekly_summary.php?token=' . appConfig()['app']['cron_token'])) ?></div>
-    <div style="word-break:break-all;margin-bottom:10px;"><strong>Daily:</strong> <?= e(appUrl('cron_daily_events.php?token=' . appConfig()['app']['cron_token'])) ?></div>
-    <div style="word-break:break-all;"><strong>Sync Missing:</strong> <?= e(appUrl('cron_sync_discord.php?token=' . appConfig()['app']['cron_token'])) ?></div>
+<div class="card mb-16">
+    <h3 class="mt-0">Cron URLs</h3>
+    <div class="muted mb-8">Use these with your server cron. They require <code>CRON_TOKEN</code> in your <code>.env</code>.</div>
+    <div class="break-all mb-10"><strong>Weekly:</strong> <?= e(appUrl('cron_weekly_summary.php?token=' . appConfig()['app']['cron_token'])) ?></div>
+    <div class="break-all mb-10"><strong>Daily:</strong> <?= e(appUrl('cron_daily_events.php?token=' . appConfig()['app']['cron_token'])) ?></div>
+    <div class="break-all"><strong>Sync Missing:</strong> <?= e(appUrl('cron_sync_discord.php?token=' . appConfig()['app']['cron_token'])) ?></div>
 </div>
 
 <div class="grid">
     <div class="card">
-        <h3 style="margin-top:0;">Weekly Summary Preview</h3>
+        <h3 class="mt-0">Weekly Summary Preview</h3>
         <?php $summaryEmbed = buildWeeklySummaryEmbed($events, $weekRange['week_start_local']); ?>
         <div><strong><?= e($summaryEmbed['title']) ?></strong></div>
-        <div class="muted" style="margin:6px 0 12px 0;"><?= e($summaryEmbed['description']) ?></div>
+        <div class="muted mt-6 mb-12"><?= e($summaryEmbed['description']) ?></div>
         <?php foreach (($summaryEmbed['fields'] ?? []) as $field): ?>
-            <div style="margin-bottom:10px;">
+            <div class="mb-10">
                 <strong><?= e((string) $field['name']) ?></strong><br>
                 <?= nl2br(e((string) $field['value'])) ?>
             </div>
@@ -113,12 +113,12 @@ renderHeader('Discord Publishing');
     </div>
 
     <div class="card">
-        <h3 style="margin-top:0;">Events for <?= e($dayRange['day_start_local']->format('l j F Y')) ?></h3>
+        <h3 class="mt-0">Events for <?= e($dayRange['day_start_local']->format('l j F Y')) ?></h3>
         <?php if (empty($todayEvents)): ?>
             <p>No events for this day.</p>
         <?php else: ?>
             <?php foreach ($todayEvents as $event): ?>
-                <div style="padding:10px 0;border-bottom:1px dashed rgba(255,255,255,.08);">
+                <div class="mb-10" style="padding:10px 0;border-bottom:1px dashed rgba(255,255,255,.08);">
                     <strong><?= e((string) $event['event_name']) ?></strong><br>
                     <span class="muted"><?= e(utcToClanLocal((string) $event['event_start_utc'])->format('g:i A')) ?></span><br>
                     <span class="muted">Daily Post: <?= !empty($event['discord_daily_message_id']) ? 'Created' : 'Pending' ?></span><br>

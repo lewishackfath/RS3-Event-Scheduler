@@ -23,20 +23,20 @@ $canManage = isAuthenticated();
 
 renderHeader('Weekly Schedule');
 ?>
-<div class="card" style="margin-bottom:16px;">
-    <div class="actions" style="justify-content:space-between;align-items:center;gap:16px;">
+<div class="card mb-16">
+    <div class="actions space-between">
         <div>
-            <h2 style="margin:0;">Week of <?= e($range['week_start_local']->format('j F Y')) ?></h2>
+            <h2 class="page-title">Week of <?= e($range['week_start_local']->format('j F Y')) ?></h2>
             <div class="muted">Timezone: <?= e(appConfig()['clan']['timezone']) ?></div>
             <?php if (!$canManage): ?>
-                <div class="muted" style="margin-top:6px;">This page is public. Login with Discord to add or manage events.</div>
+                <div class="muted mt-6">This page is public. Login with Discord to add or manage events.</div>
             <?php endif; ?>
         </div>
-        <div class="actions" style="align-items:flex-end;">
-            <form method="get" class="actions" style="align-items:flex-end;">
+        <div class="actions align-end">
+            <form method="get" class="actions align-end">
                 <div>
-                    <label for="week_date" style="margin-bottom:4px;">Jump to Week</label>
-                    <input type="date" id="week_date" name="date" value="<?= e($currentWeekDate) ?>" style="width:auto;min-width:180px;">
+                    <label for="week_date" class="mb-0">Jump to Week</label>
+                    <input type="date" id="week_date" name="date" value="<?= e($currentWeekDate) ?>" class="w-auto minw-180">
                 </div>
                 <button class="btn secondary" type="submit">Go</button>
             </form>
@@ -59,8 +59,8 @@ renderHeader('Weekly Schedule');
 <?php else: ?>
     <?php foreach ($grouped as $dateKey => $day): ?>
         <div class="card day-group">
-            <div class="actions" style="justify-content:space-between;align-items:center; margin-bottom:14px;">
-                <h3 style="margin:0;"><?= e($day['label']) ?></h3>
+            <div class="actions space-between mb-14">
+                <h3 class="page-title"><?= e($day['label']) ?></h3>
                 <?php if ($canManage): ?><a class="btn secondary" href="event_create.php?date=<?= e($dateKey) ?>">Add Event</a><?php endif; ?>
             </div>
             <?php foreach ($day['events'] as $event): $local = utcToClanLocal($event['event_start_utc']); ?>
@@ -76,7 +76,7 @@ renderHeader('Weekly Schedule');
                     <div class="event-card-body">
                         <div class="event-card-header">
                             <div>
-                                <strong><?= e($event['event_name']) ?></strong><?php if (!empty($event['recurring_series_id'])): ?><span style="display:inline-block;margin-left:8px;padding:3px 8px;border-radius:999px;background:rgba(37,99,235,.18);color:#93c5fd;font-size:12px;vertical-align:middle;">Recurring</span><?php endif; ?>
+                                <strong><?= e($event['event_name']) ?></strong><?php if (!empty($event['recurring_series_id'])): ?><span class="pill">Recurring</span><?php endif; ?>
                                 <?php if (!empty($event['is_recurring_weekly'])): ?>
                                     <span class="badge">Weekly</span>
                                 <?php endif; ?>

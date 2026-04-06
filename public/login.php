@@ -10,7 +10,7 @@ if (isAuthenticated()) {
 
 renderHeader('Login');
 ?>
-<div class="card" style="max-width:720px;margin:40px auto;">
+<div class="card mt-40" style="max-width:720px;margin-left:auto;margin-right:auto;">
     <h2 style="margin-top:0;">Discord Login Required</h2>
     <p>This scheduler is restricted to users who hold one of the configured Discord admin roles in this clan's Discord server.</p>
 
