@@ -12,7 +12,7 @@ require_once dirname(__DIR__) . '/app/lib/time.php';
 require_once dirname(__DIR__) . '/app/repositories/EventRepository.php';
 require_once dirname(__DIR__) . '/app/services/EventService.php';
 
-$publicAuthPages = ['index.php', 'login.php', 'oauth_callback.php', 'logout.php', 'cron_daily_events.php', 'cron_weekly_summary.php'];
+$publicAuthPages = ['index.php', 'login.php', 'oauth_callback.php', 'logout.php', 'cron_daily_events.php', 'cron_weekly_summary.php', 'cron_sync_discord.php'];
 $currentPage = basename((string) ($_SERVER['PHP_SELF'] ?? 'index.php'));
 
 if (!in_array($currentPage, $publicAuthPages, true)) {

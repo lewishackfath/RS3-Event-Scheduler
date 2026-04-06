@@ -75,11 +75,27 @@ renderHeader('Discord Publishing');
     </div>
 </div>
 
+    <div class="card">
+        <h2 style="margin-top:0;">Sync Missing Discord Items</h2>
+        <p class="muted">Creates any missing daily embeds or native Discord events for today only, while preserving your existing .env Discord channel configuration.</p>
+        <form method="post">
+            <input type="hidden" name="action" value="sync_pending">
+            <div class="field">
+                <label for="sync_day_date">Event Date</label>
+                <input type="date" id="sync_day_date" name="day_date" value="<?= e($dayRange['day_start_local']->format('Y-m-d')) ?>">
+            </div>
+            <div class="actions">
+                <button class="btn secondary" type="submit">Run Discord Sync</button>
+            </div>
+        </form>
+    </div>
+
 <div class="card" style="margin-bottom:16px;">
     <h3 style="margin-top:0;">Cron URLs</h3>
     <div class="muted" style="margin-bottom:8px;">Use these with your server cron. They require <code>CRON_TOKEN</code> in your <code>.env</code>.</div>
     <div style="word-break:break-all;margin-bottom:10px;"><strong>Weekly:</strong> <?= e(appUrl('cron_weekly_summary.php?token=' . appConfig()['app']['cron_token'])) ?></div>
-    <div style="word-break:break-all;"><strong>Daily:</strong> <?= e(appUrl('cron_daily_events.php?token=' . appConfig()['app']['cron_token'])) ?></div>
+    <div style="word-break:break-all;margin-bottom:10px;"><strong>Daily:</strong> <?= e(appUrl('cron_daily_events.php?token=' . appConfig()['app']['cron_token'])) ?></div>
+    <div style="word-break:break-all;"><strong>Sync Missing:</strong> <?= e(appUrl('cron_sync_discord.php?token=' . appConfig()['app']['cron_token'])) ?></div>
 </div>
 
 <div class="grid">

@@ -109,7 +109,8 @@ if (!tableExists($pdo, 'clan_events')) {
         'discord_daily_posted_at_utc' => 'ALTER TABLE clan_events ADD COLUMN discord_daily_posted_at_utc DATETIME NULL AFTER discord_daily_message_id',
         'discord_scheduled_event_id' => 'ALTER TABLE clan_events ADD COLUMN discord_scheduled_event_id VARCHAR(32) NULL AFTER discord_daily_posted_at_utc',
         'discord_scheduled_event_created_at_utc' => 'ALTER TABLE clan_events ADD COLUMN discord_scheduled_event_created_at_utc DATETIME NULL AFTER discord_scheduled_event_id',
-        'created_at_utc' => 'ALTER TABLE clan_events ADD COLUMN created_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER discord_scheduled_event_created_at_utc',
+        'status' => 'ALTER TABLE clan_events ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT "scheduled" AFTER discord_scheduled_event_created_at_utc',
+        'created_at_utc' => 'ALTER TABLE clan_events ADD COLUMN created_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER status',
         'updated_at_utc' => 'ALTER TABLE clan_events ADD COLUMN updated_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at_utc',
     ];
 
@@ -245,3 +246,9 @@ if ($clanId > 0) {
 }
 
 echo "Bootstrap complete.\n";
+
+
+if (!indexExists($pdo, 'clan_events', 'idx_clan_status_start')) {
+    $pdo->exec('CREATE INDEX idx_clan_status_start ON clan_events (clan_id, status, event_start_utc)');
+    echo "Created idx_clan_status_start index.\n";
+}

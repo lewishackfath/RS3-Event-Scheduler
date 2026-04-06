@@ -168,4 +168,103 @@ final class DiscordPostingService
 
         return $results;
     }
+
+    public function syncEventById(int $eventId): array
+    {
+        $event = $this->events->getById($eventId);
+        if (!$event) {
+            throw new RuntimeException('Event not found.');
+        }
+
+        $results = [];
+        $guildId = (string) (appConfig()['discord']['guild_id'] ?? '');
+
+        if (($event['status'] ?? 'scheduled') === 'cancelled') {
+            if (!empty($event['discord_daily_channel_id']) && !empty($event['discord_daily_message_id'])) {
+                $payload = [
+                    'embeds' => [[
+                        'title' => '❌ Event Cancelled',
+                        'description' => (string) $event['event_name'] . "\nThis event has been cancelled.",
+                        'color' => 15158332,
+                    ]],
+                ];
+                discordEditMessage((string) $event['discord_daily_channel_id'], (string) $event['discord_daily_message_id'], $payload);
+                $results[] = 'Updated daily post to cancelled';
+            }
+
+            if ($guildId !== '' && !empty($event['discord_scheduled_event_id'])) {
+                discordDeleteScheduledEvent($guildId, (string) $event['discord_scheduled_event_id']);
+                $results[] = 'Deleted native Discord event';
+            }
+
+            return $results;
+        }
+
+        $eventResults = [];
+        if (!empty(appConfig()['discord']['enable_scheduled_events']) && empty($event['discord_scheduled_event_id'])) {
+            $scheduled = $this->postScheduledEvent($event);
+            if (!empty($scheduled['id'])) {
+                $this->events->markScheduledEvent((int) $event['id'], (string) $scheduled['id']);
+                $eventResults[] = 'Created native Discord event';
+            }
+        } elseif (!empty($event['discord_scheduled_event_id'])) {
+            $eventResults[] = 'Native Discord event already exists';
+        }
+
+        if (!empty(appConfig()['discord']['enable_daily_event_posts'])) {
+            $channelId = (string) (appConfig()['discord']['daily_event_channel_id'] ?? '');
+            if ($channelId !== '') {
+                $payload = [
+                    'embeds' => [buildDailyEventEmbed($event)],
+                ];
+                if (!empty($event['discord_daily_channel_id']) && !empty($event['discord_daily_message_id'])) {
+                    discordEditMessage((string) $event['discord_daily_channel_id'], (string) $event['discord_daily_message_id'], $payload);
+                    $eventResults[] = 'Updated daily event embed';
+                } else {
+                    $response = discordPostMessage($channelId, $payload);
+                    $messageId = (string) ($response['id'] ?? '');
+                    if ($messageId !== '') {
+                        $this->events->markDailyPost((int) $event['id'], $channelId, $messageId);
+                        $eventResults[] = 'Posted daily event embed';
+                    }
+                }
+            }
+        }
+
+        return $eventResults;
+    }
+
+    public function cancelEventById(int $eventId): array
+    {
+        $event = $this->events->getById($eventId);
+        if (!$event) {
+            throw new RuntimeException('Event not found.');
+        }
+
+        $this->events->updateStatus($eventId, 'cancelled');
+        return $this->syncEventById($eventId);
+    }
+
+    public function syncPendingDiscordItemsForToday(): array
+    {
+        $day = dayRangeFromDate((new DateTimeImmutable('now', clanTimezone()))->format('Y-m-d'));
+        $events = $this->events->getForDay($day['day_start_utc'], $day['day_end_utc']);
+        $results = [];
+
+        foreach ($events as $event) {
+            if (($event['status'] ?? 'scheduled') === 'cancelled') {
+                continue;
+            }
+            $needsDaily = !empty(appConfig()['discord']['enable_daily_event_posts']) && empty($event['discord_daily_message_id']);
+            $needsNative = !empty(appConfig()['discord']['enable_scheduled_events']) && empty($event['discord_scheduled_event_id']);
+            if ($needsDaily || $needsNative) {
+                $results[] = [
+                    'event_name' => (string) $event['event_name'],
+                    'message' => implode(' · ', $this->syncEventById((int) $event['id'])),
+                ];
+            }
+        }
+
+        return $results;
+    }
 }

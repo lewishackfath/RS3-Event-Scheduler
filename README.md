@@ -16,6 +16,8 @@ A lightweight PHP web app for managing a weekly clan event schedule and posting 
 - Weekly summary Discord post
 - Day-of daily event embeds
 - Day-of native Discord scheduled events using the external event type
+- Manual Sync / Cancel actions that preserve existing .env Discord channel settings
+- Optional cron to backfill missing Discord items for today only
 - Idempotent database bootstrap script that creates and updates tables
 
 ## Requirements
@@ -68,6 +70,7 @@ The patch includes:
 
 - `cron_weekly_summary.php`
 - `cron_daily_events.php`
+- `cron_sync_discord.php`
 
 Both require a matching `CRON_TOKEN` value.
 

@@ -217,3 +217,14 @@ function buildDiscordScheduledEventUrl(string $eventId): string
 
     return 'https://discord.com/events/' . rawurlencode($guildId) . '/' . rawurlencode($eventId);
 }
+
+
+function discordEditMessage(string $channelId, string $messageId, array $payload): array
+{
+    return discordApiRequest('PATCH', '/channels/' . rawurlencode($channelId) . '/messages/' . rawurlencode($messageId), $payload);
+}
+
+function discordDeleteScheduledEvent(string $guildId, string $scheduledEventId): void
+{
+    discordApiRequest('DELETE', '/guilds/' . rawurlencode($guildId) . '/scheduled-events/' . rawurlencode($scheduledEventId));
+}

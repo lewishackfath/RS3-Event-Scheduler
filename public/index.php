@@ -84,6 +84,10 @@ renderHeader('Weekly Schedule');
                             <?php if ($canManage): ?>
                             <div class="actions">
                                 <a class="btn secondary" href="event_edit.php?id=<?= (int) $event['id'] ?>">Edit</a>
+                                <a class="btn secondary" href="sync_event.php?id=<?= (int) $event['id'] ?>" onclick="return confirm('Sync this event to Discord now?');">Sync</a>
+                                <?php if (($event['status'] ?? 'scheduled') !== 'cancelled'): ?>
+                                    <a class="btn danger" href="cancel_event.php?id=<?= (int) $event['id'] ?>" onclick="return confirm('Cancel this event and update Discord?');">Cancel</a>
+                                <?php endif; ?>
                                 <a class="btn danger" href="event_delete.php?id=<?= (int) $event['id'] ?>" onclick="return confirm('Delete this event?');">Delete</a>
                             </div>
                             <?php endif; ?>
