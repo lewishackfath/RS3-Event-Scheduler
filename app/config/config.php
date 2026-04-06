@@ -27,7 +27,6 @@ function appConfig(): array
             'url' => (string) env('APP_URL', ''),
             'env' => (string) env('APP_ENV', 'production'),
             'debug' => (bool) env('APP_DEBUG', false),
-            'cron_token' => (string) env('CRON_TOKEN', ''),
         ],
         'db' => [
             'host' => (string) env('DB_HOST', '127.0.0.1'),

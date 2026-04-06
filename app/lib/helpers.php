@@ -67,13 +67,3 @@ function appUrl(string $path = ''): string
     return $base !== '' ? $base . $path : $path;
 }
 
-function requireCronToken(): void
-{
-    $expected = trim((string) appConfig()['app']['cron_token']);
-    $provided = trim((string) ($_GET['token'] ?? $_POST['token'] ?? ''));
-    if ($expected === '' || $provided === '' || !hash_equals($expected, $provided)) {
-        http_response_code(403);
-        echo 'Forbidden';
-        exit;
-    }
-}

@@ -32,6 +32,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect('post_schedule.php?day=' . urlencode((string) ($_POST['day_date'] ?? $dayRange['day_start_local']->format('Y-m-d'))));
         }
 
+        if ($action === 'sync_pending') {
+            $results = $service->syncPendingDiscordItemsForToday();
+            $message = implode(' | ', array_map(static fn(array $r): string => (string) ($r['event_name'] ?? $r['scope'] ?? 'Result') . ': ' . (string) ($r['message'] ?? ''), $results));
+            setFlash('success', $message !== '' ? $message : 'Discord sync completed.');
+            redirect('post_schedule.php?day=' . urlencode((string) ($_POST['day_date'] ?? $dayRange['day_start_local']->format('Y-m-d'))));
+        }
+
         throw new RuntimeException('Unknown action.');
     } catch (Throwable $e) {
         setFlash('error', $e->getMessage());
@@ -91,11 +98,12 @@ renderHeader('Discord Publishing');
     </div>
 
 <div class="card mb-16">
-    <h3 class="mt-0">Cron URLs</h3>
-    <div class="muted mb-8">Use these with your server cron. They require <code>CRON_TOKEN</code> in your <code>.env</code>.</div>
-    <div class="break-all mb-10"><strong>Weekly:</strong> <?= e(appUrl('cron_weekly_summary.php?token=' . appConfig()['app']['cron_token'])) ?></div>
-    <div class="break-all mb-10"><strong>Daily:</strong> <?= e(appUrl('cron_daily_events.php?token=' . appConfig()['app']['cron_token'])) ?></div>
-    <div class="break-all"><strong>Sync Missing:</strong> <?= e(appUrl('cron_sync_discord.php?token=' . appConfig()['app']['cron_token'])) ?></div>
+    <h3 class="mt-0">Cron Commands</h3>
+    <div class="muted mb-8">Run these directly from your server cron. No web token is required.</div>
+    <div class="break-all mb-10"><strong>Weekly:</strong> <code>php /mnt/data/work/cron/cron_weekly_summary.php</code></div>
+    <div class="break-all mb-10"><strong>Daily:</strong> <code>php /mnt/data/work/cron/cron_daily_events.php</code></div>
+    <div class="break-all"><strong>Sync Missing:</strong> <code>php /mnt/data/work/cron/cron_sync_discord.php</code></div>
+<div class="muted mt-8">Optional date argument for daily/weekly scripts: <code>php /full/path/to/script.php 2026-04-07</code></div>
 </div>
 
 <div class="grid">
