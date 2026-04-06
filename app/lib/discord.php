@@ -2,6 +2,8 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../config/config.php';
+require_once __DIR__ . '/time.php';
+require_once __DIR__ . '/helpers.php';
 
 function discordApiRequest(string $method, string $endpoint, array $payload = [], array $query = []): array
 {
@@ -23,7 +25,7 @@ function discordApiRequest(string $method, string $endpoint, array $payload = []
     $headers = [
         'Authorization: Bot ' . $token,
         'Content-Type: application/json',
-        'User-Agent: ClanEventScheduler/1.3',
+        'User-Agent: ClanEventScheduler/1.6',
     ];
 
     $options = [
@@ -60,6 +62,15 @@ function discordApiRequest(string $method, string $endpoint, array $payload = []
 function postDiscordMessage(string $channelId, string $content, array $embeds = []): array
 {
     return discordApiRequest('POST', '/channels/' . $channelId . '/messages', [
+        'content' => $content,
+        'embeds' => $embeds,
+        'allowed_mentions' => ['parse' => []],
+    ]);
+}
+
+function editDiscordMessage(string $channelId, string $messageId, string $content, array $embeds = []): array
+{
+    return discordApiRequest('PATCH', '/channels/' . $channelId . '/messages/' . $messageId, [
         'content' => $content,
         'embeds' => $embeds,
         'allowed_mentions' => ['parse' => []],
@@ -161,4 +172,48 @@ function fetchGuildMember(string $guildId, string $userId): ?array
         'global_name' => $globalName,
         'nick' => $nick,
     ];
+}
+
+function createExternalScheduledEvent(array $event, ?string $locationOverride = null): array
+{
+    $guildId = trim((string) appConfig()['discord']['guild_id']);
+    if ($guildId === '') {
+        throw new RuntimeException('DISCORD_GUILD_ID is not configured.');
+    }
+
+    $durationMinutes = (int) ($event['duration_minutes'] ?? 0);
+    if ($durationMinutes <= 0) {
+        $durationMinutes = max(1, (int) appConfig()['discord']['default_event_duration_minutes']);
+    }
+
+    $startUtc = new DateTimeImmutable((string) $event['event_start_utc'], utcTimezone());
+    $endUtc = $startUtc->modify('+' . $durationMinutes . ' minutes');
+    $location = trim((string) ($locationOverride ?? appConfig()['discord']['event_location_default'] ?? ''));
+    if ($location === '') {
+        $location = 'RuneScape - In Game';
+    }
+
+    $payload = [
+        'name' => (string) $event['event_name'],
+        'privacy_level' => 2,
+        'scheduled_start_time' => $startUtc->format(DateTimeInterface::ATOM),
+        'scheduled_end_time' => $endUtc->format(DateTimeInterface::ATOM),
+        'description' => trim((string) ($event['event_description'] ?? '')),
+        'entity_type' => 3,
+        'entity_metadata' => [
+            'location' => $location,
+        ],
+    ];
+
+    return discordApiRequest('POST', '/guilds/' . rawurlencode($guildId) . '/scheduled-events', $payload);
+}
+
+function buildDiscordScheduledEventUrl(string $eventId): string
+{
+    $guildId = trim((string) appConfig()['discord']['guild_id']);
+    if ($guildId === '' || trim($eventId) === '') {
+        return '';
+    }
+
+    return 'https://discord.com/events/' . rawurlencode($guildId) . '/' . rawurlencode($eventId);
 }

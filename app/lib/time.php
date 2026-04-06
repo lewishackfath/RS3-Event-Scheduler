@@ -36,12 +36,32 @@ function weekRangeFromDate(?string $date = null): array
     $tz = clanTimezone();
     $target = $date ? new DateTimeImmutable($date . ' 00:00:00', $tz) : new DateTimeImmutable('now', $tz);
     $monday = $target->modify('monday this week')->setTime(0, 0, 0);
-    $sundayEnd = $monday->modify('+6 days')->setTime(23, 59, 59);
+    $nextMonday = $monday->modify('+7 days');
 
     return [
         'week_start_local' => $monday,
-        'week_end_local' => $sundayEnd,
+        'week_end_local' => $nextMonday->modify('-1 second'),
         'week_start_utc' => $monday->setTimezone(utcTimezone())->format('Y-m-d H:i:s'),
-        'week_end_utc' => $sundayEnd->setTimezone(utcTimezone())->format('Y-m-d H:i:s'),
+        'week_end_utc' => $nextMonday->setTimezone(utcTimezone())->format('Y-m-d H:i:s'),
     ];
+}
+
+function dayRangeFromDate(?string $date = null): array
+{
+    $tz = clanTimezone();
+    $target = $date ? new DateTimeImmutable($date . ' 00:00:00', $tz) : new DateTimeImmutable('now', $tz);
+    $start = $target->setTime(0, 0, 0);
+    $nextDay = $start->modify('+1 day');
+
+    return [
+        'day_start_local' => $start,
+        'day_end_local' => $nextDay->modify('-1 second'),
+        'day_start_utc' => $start->setTimezone(utcTimezone())->format('Y-m-d H:i:s'),
+        'day_end_utc' => $nextDay->setTimezone(utcTimezone())->format('Y-m-d H:i:s'),
+    ];
+}
+
+function utcIso8601(string $utcDateTime): string
+{
+    return (new DateTimeImmutable($utcDateTime, utcTimezone()))->format(DateTimeInterface::ATOM);
 }

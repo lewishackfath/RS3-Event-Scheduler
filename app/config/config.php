@@ -27,6 +27,7 @@ function appConfig(): array
             'url' => (string) env('APP_URL', ''),
             'env' => (string) env('APP_ENV', 'production'),
             'debug' => (bool) env('APP_DEBUG', false),
+            'cron_token' => (string) env('CRON_TOKEN', ''),
         ],
         'db' => [
             'host' => (string) env('DB_HOST', '127.0.0.1'),
@@ -51,6 +52,14 @@ function appConfig(): array
         ],
         'discord' => [
             'bot_token' => (string) env('DISCORD_BOT_TOKEN', ''),
+            'guild_id' => (string) env('DISCORD_GUILD_ID', ''),
+            'weekly_summary_channel_id' => (string) env('DISCORD_WEEKLY_SUMMARY_CHANNEL_ID', ''),
+            'daily_event_channel_id' => (string) env('DISCORD_DAILY_EVENT_CHANNEL_ID', ''),
+            'enable_weekly_summary' => (bool) env('DISCORD_ENABLE_WEEKLY_SUMMARY', true),
+            'enable_daily_event_posts' => (bool) env('DISCORD_ENABLE_DAILY_EVENT_POSTS', true),
+            'enable_scheduled_events' => (bool) env('DISCORD_ENABLE_SCHEDULED_EVENTS', true),
+            'event_location_default' => (string) env('DISCORD_EVENT_LOCATION_DEFAULT', 'RuneScape - In Game'),
+            'default_event_duration_minutes' => (int) env('DISCORD_DEFAULT_EVENT_DURATION_MINUTES', 60),
         ],
         'discord_oauth' => [
             'client_id' => (string) env('DISCORD_CLIENT_ID', ''),

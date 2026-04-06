@@ -7,59 +7,109 @@ require_once dirname(__DIR__) . '/app/services/DiscordPostingService.php';
 require_once dirname(__DIR__) . '/app/lib/event_embeds.php';
 
 $selectedDate = isset($_GET['date']) ? (string) $_GET['date'] : null;
-$range = weekRangeFromDate($selectedDate);
-$events = (new EventRepository())->getForWeek($range['week_start_utc'], $range['week_end_utc']);
+$selectedDay = isset($_GET['day']) ? (string) $_GET['day'] : ($selectedDate ?? null);
+$weekRange = weekRangeFromDate($selectedDate);
+$dayRange = dayRangeFromDate($selectedDay);
+$events = (new EventRepository())->getForWeek($weekRange['week_start_utc'], $weekRange['week_end_utc']);
+$todayEvents = (new EventRepository())->getForDay($dayRange['day_start_utc'], $dayRange['day_end_utc']);
+
+$service = new DiscordPostingService();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
-        (new DiscordPostingService())->postEvents($events);
-        setFlash('success', 'Posting complete.');
-        redirect('post_schedule.php?date=' . urlencode($range['week_start_local']->format('Y-m-d')));
+        $action = (string) ($_POST['action'] ?? '');
+        if ($action === 'weekly_summary') {
+            $results = $service->postWeeklySummaryForWeek((string) ($_POST['week_date'] ?? ''));
+            $message = implode(' | ', array_map(static fn(array $r): string => (string) ($r['message'] ?? ''), $results));
+            setFlash('success', $message !== '' ? $message : 'Weekly summary completed.');
+            redirect('post_schedule.php?date=' . urlencode((string) ($_POST['week_date'] ?? $weekRange['week_start_local']->format('Y-m-d'))));
+        }
+
+        if ($action === 'daily_events') {
+            $results = $service->publishDayOfEvents((string) ($_POST['day_date'] ?? ''));
+            $message = implode(' | ', array_map(static fn(array $r): string => (string) ($r['event_name'] ?? $r['scope'] ?? 'Result') . ': ' . (string) ($r['message'] ?? ''), $results));
+            setFlash('success', $message !== '' ? $message : 'Daily event publishing completed.');
+            redirect('post_schedule.php?day=' . urlencode((string) ($_POST['day_date'] ?? $dayRange['day_start_local']->format('Y-m-d'))));
+        }
+
+        throw new RuntimeException('Unknown action.');
     } catch (Throwable $e) {
         setFlash('error', $e->getMessage());
-        redirect('post_schedule.php?date=' . urlencode($range['week_start_local']->format('Y-m-d')));
+        redirect('post_schedule.php?date=' . urlencode($weekRange['week_start_local']->format('Y-m-d')) . '&day=' . urlencode($dayRange['day_start_local']->format('Y-m-d')));
     }
 }
 
-renderHeader('Post to Discord');
+renderHeader('Discord Publishing');
 ?>
-<div class="card" style="margin-bottom:16px;">
-    <h2 style="margin-top:0;">Post Week of <?= e($range['week_start_local']->format('j F Y')) ?></h2>
-    <p class="muted">This posts one embed per event in chronological order.</p>
-    <form method="post">
-        <div class="actions">
-            <button class="btn" type="submit">Post This Week to Discord</button>
-            <a class="btn secondary" href="index.php?date=<?= e($range['week_start_local']->format('Y-m-d')) ?>">Back to Schedule</a>
-        </div>
-    </form>
+<div class="grid" style="margin-bottom:16px;">
+    <div class="card">
+        <h2 style="margin-top:0;">Weekly Summary</h2>
+        <p class="muted">Posts or updates one summary embed for the selected week.</p>
+        <form method="post">
+            <input type="hidden" name="action" value="weekly_summary">
+            <div class="field">
+                <label for="week_date">Week Date</label>
+                <input type="date" id="week_date" name="week_date" value="<?= e($weekRange['week_start_local']->format('Y-m-d')) ?>">
+            </div>
+            <div class="actions">
+                <button class="btn" type="submit">Post Weekly Summary</button>
+                <a class="btn secondary" href="index.php?date=<?= e($weekRange['week_start_local']->format('Y-m-d')) ?>">View Week</a>
+            </div>
+        </form>
+    </div>
+
+    <div class="card">
+        <h2 style="margin-top:0;">Day-of Event Publishing</h2>
+        <p class="muted">Creates native external Discord events and posts daily event embeds for the selected day.</p>
+        <form method="post">
+            <input type="hidden" name="action" value="daily_events">
+            <div class="field">
+                <label for="day_date">Event Date</label>
+                <input type="date" id="day_date" name="day_date" value="<?= e($dayRange['day_start_local']->format('Y-m-d')) ?>">
+            </div>
+            <div class="actions">
+                <button class="btn" type="submit">Run Day-of Publisher</button>
+                <a class="btn secondary" href="index.php?date=<?= e($dayRange['day_start_local']->format('Y-m-d')) ?>">View Schedule</a>
+            </div>
+        </form>
+    </div>
 </div>
 
-<?php if (empty($events)): ?>
-    <div class="card"><p>No events found for this week.</p></div>
-<?php else: ?>
-    <?php foreach ($events as $event): $embed = buildEventEmbed($event); $local = utcToClanLocal($event['event_start_utc']); ?>
-        <div class="card" style="margin-bottom:16px;">
-            <div class="event-card-row" style="border-bottom:none;padding:0;">
-                <div class="event-card-image-wrap preview-thumb-wrap">
-                    <?php $thumb = eventDisplayImageUrl($event); ?>
-                    <?php if ($thumb !== ''): ?>
-                        <img class="event-card-image" src="<?= e($thumb) ?>" alt="<?= e($event['event_name']) ?>">
-                    <?php else: ?>
-                        <div class="event-card-image placeholder">No image</div>
-                    <?php endif; ?>
-                </div>
-                <div class="event-card-body">
-                    <h3 style="margin-top:0;"><?= e($event['event_name']) ?></h3>
-                    <div class="muted" style="margin-bottom:10px;">Embed preview · <?= e($local->format('l j F Y g:i A')) ?></div>
-                    <div class="event-meta-grid" style="margin-bottom:12px;">
-                        <?php foreach ($embed['fields'] as $field): ?>
-                            <div><strong><?= e($field['name']) ?>:</strong><br><?= nl2br(e($field['value'])) ?></div>
-                        <?php endforeach; ?>
-                    </div>
-                    <div class="muted">Discord embed will show the event image as a side thumbnail.</div>
-                </div>
+<div class="card" style="margin-bottom:16px;">
+    <h3 style="margin-top:0;">Cron URLs</h3>
+    <div class="muted" style="margin-bottom:8px;">Use these with your server cron. They require <code>CRON_TOKEN</code> in your <code>.env</code>.</div>
+    <div style="word-break:break-all;margin-bottom:10px;"><strong>Weekly:</strong> <?= e(appUrl('cron_weekly_summary.php?token=' . appConfig()['app']['cron_token'])) ?></div>
+    <div style="word-break:break-all;"><strong>Daily:</strong> <?= e(appUrl('cron_daily_events.php?token=' . appConfig()['app']['cron_token'])) ?></div>
+</div>
+
+<div class="grid">
+    <div class="card">
+        <h3 style="margin-top:0;">Weekly Summary Preview</h3>
+        <?php $summaryEmbed = buildWeeklySummaryEmbed($events, $weekRange['week_start_local']); ?>
+        <div><strong><?= e($summaryEmbed['title']) ?></strong></div>
+        <div class="muted" style="margin:6px 0 12px 0;"><?= e($summaryEmbed['description']) ?></div>
+        <?php foreach (($summaryEmbed['fields'] ?? []) as $field): ?>
+            <div style="margin-bottom:10px;">
+                <strong><?= e((string) $field['name']) ?></strong><br>
+                <?= nl2br(e((string) $field['value'])) ?>
             </div>
-        </div>
-    <?php endforeach; ?>
-<?php endif; ?>
+        <?php endforeach; ?>
+    </div>
+
+    <div class="card">
+        <h3 style="margin-top:0;">Events for <?= e($dayRange['day_start_local']->format('l j F Y')) ?></h3>
+        <?php if (empty($todayEvents)): ?>
+            <p>No events for this day.</p>
+        <?php else: ?>
+            <?php foreach ($todayEvents as $event): ?>
+                <div style="padding:10px 0;border-bottom:1px dashed rgba(255,255,255,.08);">
+                    <strong><?= e((string) $event['event_name']) ?></strong><br>
+                    <span class="muted"><?= e(utcToClanLocal((string) $event['event_start_utc'])->format('g:i A')) ?></span><br>
+                    <span class="muted">Daily Post: <?= !empty($event['discord_daily_message_id']) ? 'Created' : 'Pending' ?></span><br>
+                    <span class="muted">Native Discord Event: <?= !empty($event['discord_scheduled_event_id']) ? 'Created' : 'Pending' ?></span>
+                </div>
+            <?php endforeach; ?>
+        <?php endif; ?>
+    </div>
+</div>
 <?php renderFooter(); ?>

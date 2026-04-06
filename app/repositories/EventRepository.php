@@ -90,6 +90,34 @@ final class EventRepository
         return $this->expandRecurringForWeek($rows, $weekStartUtc, $weekEndUtc);
     }
 
+    public function getForDay(string $dayStartUtc, string $dayEndUtc): array
+    {
+        $stmt = db()->prepare(
+            'SELECT * FROM clan_events
+             WHERE clan_id = :clan_id
+               AND is_active = 1
+               AND event_start_utc >= :day_start_utc
+               AND event_start_utc < :day_end_utc
+             ORDER BY event_start_utc ASC, id ASC'
+        );
+
+        $stmt->execute([
+            'clan_id' => currentClanId(),
+            'day_start_utc' => $dayStartUtc,
+            'day_end_utc' => $dayEndUtc,
+        ]);
+
+        $rows = $stmt->fetchAll() ?: [];
+        if (!$this->hasRecurringSeriesColumn()) {
+            foreach ($rows as &$row) {
+                $row['recurring_series_id'] = null;
+            }
+            unset($row);
+        }
+
+        return $rows;
+    }
+
     public function create(array $data): int
     {
         if ($this->hasRecurringSeriesColumn()) {
@@ -287,6 +315,86 @@ final class EventRepository
             'event_id' => $eventId,
             'discord_channel_id' => $channelId,
             'discord_message_id' => $messageId,
+        ]);
+    }
+
+    public function markDailyPost(int $eventId, string $channelId, string $messageId): void
+    {
+        $stmt = db()->prepare(
+            'UPDATE clan_events
+             SET discord_daily_channel_id = :channel_id,
+                 discord_daily_message_id = :message_id,
+                 discord_daily_posted_at_utc = UTC_TIMESTAMP()
+             WHERE id = :id AND clan_id = :clan_id'
+        );
+        $stmt->execute([
+            'id' => $eventId,
+            'clan_id' => currentClanId(),
+            'channel_id' => $channelId,
+            'message_id' => $messageId,
+        ]);
+    }
+
+    public function markScheduledEvent(int $eventId, string $scheduledEventId): void
+    {
+        $stmt = db()->prepare(
+            'UPDATE clan_events
+             SET discord_scheduled_event_id = :scheduled_event_id,
+                 discord_scheduled_event_created_at_utc = UTC_TIMESTAMP()
+             WHERE id = :id AND clan_id = :clan_id'
+        );
+        $stmt->execute([
+            'id' => $eventId,
+            'clan_id' => currentClanId(),
+            'scheduled_event_id' => $scheduledEventId,
+        ]);
+    }
+
+    public function getWeeklyPost(string $weekStartUtc): ?array
+    {
+        $stmt = db()->prepare(
+            'SELECT * FROM discord_weekly_posts
+             WHERE clan_id = :clan_id AND week_start_utc = :week_start_utc
+             ORDER BY id DESC
+             LIMIT 1'
+        );
+        $stmt->execute([
+            'clan_id' => currentClanId(),
+            'week_start_utc' => $weekStartUtc,
+        ]);
+
+        $row = $stmt->fetch();
+        return $row ?: null;
+    }
+
+    public function recordWeeklyPost(string $weekStartUtc, string $channelId, string $messageId): void
+    {
+        $existing = $this->getWeeklyPost($weekStartUtc);
+        if ($existing) {
+            $stmt = db()->prepare(
+                'UPDATE discord_weekly_posts
+                 SET discord_channel_id = :channel_id,
+                     discord_message_id = :message_id,
+                     updated_at_utc = UTC_TIMESTAMP()
+                 WHERE id = :id'
+            );
+            $stmt->execute([
+                'id' => (int) $existing['id'],
+                'channel_id' => $channelId,
+                'message_id' => $messageId,
+            ]);
+            return;
+        }
+
+        $stmt = db()->prepare(
+            'INSERT INTO discord_weekly_posts (clan_id, week_start_utc, discord_channel_id, discord_message_id, posted_at_utc)
+             VALUES (:clan_id, :week_start_utc, :channel_id, :message_id, UTC_TIMESTAMP())'
+        );
+        $stmt->execute([
+            'clan_id' => currentClanId(),
+            'week_start_utc' => $weekStartUtc,
+            'channel_id' => $channelId,
+            'message_id' => $messageId,
         ]);
     }
 

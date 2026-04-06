@@ -1,6 +1,6 @@
 # Clan Event Scheduler
 
-A lightweight PHP web app for managing a weekly clan event schedule and manually posting event embeds to Discord.
+A lightweight PHP web app for managing a weekly clan event schedule and posting clan events to Discord.
 
 ## Features
 
@@ -10,9 +10,12 @@ A lightweight PHP web app for managing a weekly clan event schedule and manually
 - Multiple events per date
 - Weekly grouped schedule view
 - Event create, edit, delete
-- Manual Discord posting with one embed per event
+- Weekly recurring event management
 - Discord OAuth login
 - Role-based access control using Discord guild roles
+- Weekly summary Discord post
+- Day-of daily event embeds
+- Day-of native Discord scheduled events using the external event type
 - Idempotent database bootstrap script that creates and updates tables
 
 ## Requirements
@@ -21,7 +24,8 @@ A lightweight PHP web app for managing a weekly clan event schedule and manually
 - MySQL / MariaDB
 - PDO MySQL extension
 - cURL extension
-- Discord bot token with permission to send messages in the target channel
+- Discord bot token with permission to send messages in the target channels
+- Discord bot permission to create guild scheduled events
 - A Discord OAuth application configured with a matching redirect URI
 
 ## Setup
@@ -30,45 +34,60 @@ A lightweight PHP web app for managing a weekly clan event schedule and manually
 2. Update the database, clan, branding, bot, and Discord OAuth values
 3. Set `DISCORD_GUILD_ID` to the server for this clan instance
 4. Set `ADMIN_ROLE_IDS` to one or more role IDs that should be allowed into the app
-5. Run the bootstrap:
+5. Set the weekly summary and daily event channel IDs
+6. Run the bootstrap:
 
 ```bash
 php setup/db_bootstrap.php
 ```
 
-6. Point your web root at the `public` folder
+7. Point your web root at the `public` folder
 
 ## Notes
 
-- This build protects the scheduler behind Discord login.
+- The public schedule page stays visible without login.
 - A user is allowed in only if their logged-in Discord account holds one of the configured roles in `DISCORD_GUILD_ID`.
 - Recommended OAuth scopes: `identify guilds.members.read`
 - All event times are entered in the clan timezone and stored in UTC.
 - Discord local time rendering is handled through Discord timestamps.
+- Weekly recurring events now require a recurring until date.
+- Full recurring series management uses `recurring_series_id`.
+- Day-of publishing creates the actual native Discord event only on the event date, which avoids cluttering the server with too many future scheduled events.
 
-## Posting to Discord
+## Discord Publishing
 
-Open `post_schedule.php` in the web app and post a selected week. The app sends one embed per event in chronological order.
+Open `post_schedule.php` in the web app to:
 
+- post or update the weekly summary
+- run the day-of event publisher manually
+- copy the cron URLs
 
-## Recurring event management
+### Cron endpoints
 
-- Weekly recurring events now require a **Recurring Until** date.
-- The app generates each weekly occurrence as a real event row.
-- Editing a recurring event now supports:
-  - **This event only**
-  - **This event and future events**
-  - **Entire series**
-- Deleting a recurring event now supports the same scope options.
-- Run `php setup/db_bootstrap.php` after deploying this patch so the new `recurring_series_id` column and index are created.
+The patch includes:
 
+- `cron_weekly_summary.php`
+- `cron_daily_events.php`
 
-## Important recurring events note
+Both require a matching `CRON_TOKEN` value.
 
-If `setup/db_bootstrap.php` has **not** yet been run and the `recurring_series_id` column does not exist, the app now falls back to legacy single-row weekly recurring behaviour to avoid duplicate future events.
+Example:
 
-For full recurring series management, run:
-
-```bash
-php setup/db_bootstrap.php
+```text
+https://events.example.com/cron_weekly_summary.php?token=your-secret
+https://events.example.com/cron_daily_events.php?token=your-secret
 ```
+
+## Suggested cron usage
+
+- Weekly summary: once per week on your preferred day and time
+- Day-of events: once per day shortly after midnight clan time
+
+## This patch adds
+
+- `discord_weekly_posts` table
+- Discord sync columns on `clan_events` for:
+  - daily message tracking
+  - native scheduled event tracking
+- manual Discord Publishing admin page
+- token-protected cron endpoints

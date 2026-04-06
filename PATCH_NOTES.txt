@@ -1,0 +1,12 @@
+Patch applied:
+- Added weekly Discord summary posting with update support
+- Added day-of publishing for daily event embeds
+- Added day-of creation of native Discord scheduled events using the external event type
+- Added token-protected cron endpoints:
+  - public/cron_weekly_summary.php
+  - public/cron_daily_events.php
+- Added new .env settings for weekly summary, daily event posting, scheduled events, default location, default duration, and cron token
+- Added new database tracking fields on clan_events for daily post IDs and scheduled event IDs
+- Added discord_weekly_posts table for weekly summary tracking
+- Updated post_schedule.php into a Discord Publishing admin page
+- Added nav link for Discord Publishing when logged in

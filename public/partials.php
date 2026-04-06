@@ -8,6 +8,7 @@ function renderHeader(string $title): void
         ? 'background-image:url(' . e($brand['background_image_url']) . ');background-size:cover;background-position:center;'
         : 'background:linear-gradient(135deg,#1f2937,#111827);';
     $user = function_exists('currentUser') ? currentUser() : null;
+    $currentPage = basename((string) ($_SERVER['PHP_SELF'] ?? 'index.php'));
 
     echo '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">';
     echo '<title>' . e($title) . ' - ' . e(appConfig()['app']['name']) . '</title>';
@@ -21,6 +22,7 @@ function renderHeader(string $title): void
         .hero-left{display:flex;gap:16px;align-items:center}
         .hero img.logo{max-height:56px;max-width:56px;border-radius:12px;background:#fff;padding:4px}
         .nav{display:flex;gap:16px;flex-wrap:wrap;margin-top:12px}
+        .nav .active{font-weight:700;text-decoration:underline}
         .userbox{display:flex;align-items:center;gap:10px;background:rgba(17,24,39,.75);padding:10px 14px;border:1px solid rgba(255,255,255,.08);border-radius:14px}
         .avatar{width:36px;height:36px;border-radius:999px;object-fit:cover;background:#1f2937}
         .card{background:#111827;border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:18px;box-shadow:0 10px 25px rgba(0,0,0,.2)}
@@ -68,39 +70,39 @@ function renderHeader(string $title): void
     echo '<div class="hero"><div class="hero-inner">';
     echo '<div class="hero-left">';
     if (($brand['logo_url'] ?? '') !== '') {
-        echo '<img class="logo" src="' . e($brand['logo_url']) . '" alt="Logo">';
+        echo '<img class="logo" src="' . e((string) $brand['logo_url']) . '" alt="' . e(currentClanName()) . '">';
     }
-    echo '<div><h1 style="margin:0 0 6px 0">' . e(currentClanName()) . '</h1>';
-    echo '<div class="muted">' . e(appConfig()['app']['name']) . '</div>';
+    echo '<div>';
+    echo '<h1 style="margin:0 0 6px 0;">' . e(appConfig()['app']['name']) . '</h1>';
+    echo '<div class="muted">' . e(currentClanName()) . '</div>';
     echo '<div class="nav">';
-    echo '<a href="index.php">Weekly Schedule</a>';
-    if ($user !== null) {
-        echo '<a href="event_create.php">Add Event</a>';
-        echo '<a href="post_schedule.php">Post to Discord</a>';
+    echo '<a class="' . ($currentPage === 'index.php' ? 'active' : '') . '" href="index.php">Schedule</a>';
+    if (isAuthenticated()) {
+        echo '<a class="' . ($currentPage === 'post_schedule.php' ? 'active' : '') . '" href="post_schedule.php">Discord Publishing</a>';
     }
-    echo '</div></div></div>';
+    echo '</div>';
+    echo '</div></div>';
 
-    if ($user !== null) {
+    echo '<div>';
+    if ($user) {
         echo '<div class="userbox">';
-        if (($user['avatar_url'] ?? '') !== '') {
-            echo '<img class="avatar" src="' . e($user['avatar_url']) . '" alt="Avatar">';
+        if (!empty($user['avatar_url'])) {
+            echo '<img class="avatar" src="' . e((string) $user['avatar_url']) . '" alt="' . e((string) $user['display_name']) . '">';
         }
-        echo '<div><div>' . e((string) ($user['display_name'] ?? 'Discord User')) . '</div><div class="muted">Authorised via Discord role</div></div>';
+        echo '<div><div>' . e((string) $user['display_name']) . '</div><div class="muted">Discord Admin</div></div>';
         echo '<a class="btn secondary" href="logout.php">Logout</a>';
         echo '</div>';
     } else {
-        echo '<div class="userbox">';
-        echo '<div><div>Public Schedule View</div><div class="muted">Login to manage events</div></div>';
-        echo '<a class="btn" href="login.php">Login with Discord</a>';
-        echo '</div>';
+        echo '<div class="userbox"><div><div>Public View</div><div class="muted">Login with Discord to manage events</div></div><a class="btn" href="login.php">Login</a></div>';
     }
+    echo '</div>';
 
     echo '</div></div>';
     echo '<div class="wrap">';
 
     $flash = flashMessage();
     if ($flash) {
-        echo '<div class="flash ' . e($flash['type']) . '">' . e($flash['message']) . '</div>';
+        echo '<div class="flash ' . e((string) $flash['type']) . '">' . e((string) $flash['message']) . '</div>';
     }
 }
 
