@@ -49,6 +49,11 @@ function buildEventEmbed(array $event): array
                 'value' => $host,
                 'inline' => false,
             ],
+            [
+                'name' => 'Location',
+                'value' => trim((string) ($event['event_location'] ?? '')) !== '' ? (string) $event['event_location'] : (string) (appConfig()['discord']['event_location_default'] ?? 'RuneScape - In Game'),
+                'inline' => false,
+            ],
         ],
         'footer' => [
             'text' => (string) ($brand['footer_text'] ?: currentClanName() . ' Events'),

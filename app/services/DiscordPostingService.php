@@ -68,6 +68,50 @@ final class DiscordPostingService
         $embed = buildWeeklySummaryEmbed($events, $range['week_start_local']);
 
         if ($existing && !empty($existing['discord_message_id'])) {
+            try {
+                editDiscordMessage((string) $existing['discord_channel_id'], (string) $existing['discord_message_id'], '', [$embed]);
+                $this->events->recordWeeklyPost($range['week_start_utc'], (string) $existing['discord_channel_id'], (string) $existing['discord_message_id']);
+
+                return [[
+                    'scope' => 'weekly_summary',
+                    'status' => 'updated',
+                    'message' => 'Updated existing weekly summary message.',
+                ]];
+            } catch (Throwable $e) {
+                $message = $e->getMessage();
+                $isUnknownMessage = str_contains($message, 'Unknown Message') || str_contains($message, '10008');
+                if (!$isUnknownMessage) {
+                    throw $e;
+                }
+
+                $this->events->deleteWeeklyPost($range['week_start_utc']);
+            }
+        }
+
+        $response = postDiscordMessage($channelId, '', [$embed]);
+        $messageId = (string) ($response['id'] ?? '');
+        if ($messageId !== '') {
+            $this->events->recordWeeklyPost($range['week_start_utc'], $channelId, $messageId);
+        }
+
+        return [[
+            'scope' => 'weekly_summary',
+            'status' => 'posted',
+            'message' => 'Posted weekly summary for week of ' . $range['week_start_local']->format('j M Y') . '.',
+        ]];
+    }
+
+        $channelId = trim((string) $config['weekly_summary_channel_id']);
+        if ($channelId === '') {
+            throw new RuntimeException('DISCORD_WEEKLY_SUMMARY_CHANNEL_ID is not configured.');
+        }
+
+        $range = weekRangeFromDate($date);
+        $events = $this->events->getForWeek($range['week_start_utc'], $range['week_end_utc']);
+        $existing = $this->events->getWeeklyPost($range['week_start_utc']);
+        $embed = buildWeeklySummaryEmbed($events, $range['week_start_local']);
+
+        if ($existing && !empty($existing['discord_message_id'])) {
             editDiscordMessage((string) $existing['discord_channel_id'], (string) $existing['discord_message_id'], '', [$embed]);
             $this->events->recordWeeklyPost($range['week_start_utc'], (string) $existing['discord_channel_id'], (string) $existing['discord_message_id']);
 

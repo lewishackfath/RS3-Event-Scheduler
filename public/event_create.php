@@ -12,6 +12,7 @@ $formValues = [
     'event_time' => '',
     'duration_minutes' => '',
     'discord_channel_id' => appConfig()['clan']['default_discord_channel_id'],
+    'event_location' => '',
     'image_url' => '',
     'event_description' => '',
     'is_active' => 1,

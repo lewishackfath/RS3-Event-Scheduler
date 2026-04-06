@@ -188,7 +188,7 @@ function createExternalScheduledEvent(array $event, ?string $locationOverride = 
 
     $startUtc = new DateTimeImmutable((string) $event['event_start_utc'], utcTimezone());
     $endUtc = $startUtc->modify('+' . $durationMinutes . ' minutes');
-    $location = trim((string) ($locationOverride ?? appConfig()['discord']['event_location_default'] ?? ''));
+    $location = trim((string) ($locationOverride ?? ($event['event_location'] ?? '') ?? appConfig()['discord']['event_location_default'] ?? ''));
     if ($location === '') {
         $location = 'RuneScape - In Game';
     }

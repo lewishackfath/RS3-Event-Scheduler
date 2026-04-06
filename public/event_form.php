@@ -71,6 +71,10 @@ $isSeriesEvent = $isEditPage && isset($event) && trim((string) ($event['recurrin
         <?php endif; ?>
 
         <div class="field">
+            <label for="event_location">Location</label>
+            <input type="text" id="event_location" name="event_location" value="<?= e($formValues['event_location'] ?? '') ?>" placeholder="Optional. Falls back to DISCORD_EVENT_LOCATION_DEFAULT if left blank.">
+        </div>
+        <div class="field">
             <label for="image_url">Custom Image URL</label>
             <input type="url" id="image_url" name="image_url" value="<?= e($formValues['image_url'] ?? '') ?>">
         </div>

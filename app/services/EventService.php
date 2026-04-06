@@ -31,6 +31,7 @@ final class EventService
         return [
             'event_name' => $eventName,
             'event_description' => trim((string) ($input['event_description'] ?? '')),
+            'event_location' => trim((string) ($input['event_location'] ?? '')),
             'host_name' => $hostName,
             'host_discord_user_id' => $hostDiscordUserId,
             'event_start_utc' => clanLocalToUtc($eventDate, $eventTime),

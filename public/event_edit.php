@@ -26,6 +26,7 @@ $formValues = [
     'event_time' => $local->format('H:i'),
     'duration_minutes' => $event['duration_minutes'],
     'discord_channel_id' => $event['discord_channel_id'],
+    'event_location' => $event['event_location'] ?? '',
     'image_url' => $event['image_url'],
     'event_description' => $event['event_description'],
     'is_active' => (int) $event['is_active'],

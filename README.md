@@ -94,3 +94,10 @@ https://events.example.com/cron_daily_events.php?token=your-secret
   - native scheduled event tracking
 - manual Discord Publishing admin page
 - token-protected cron endpoints
+
+
+## Location field
+
+Events now support an optional `Location` value. If left blank, Discord native scheduled events continue to fall back to `DISCORD_EVENT_LOCATION_DEFAULT` from `.env`.
+
+The weekly summary flow now also recovers automatically if the previously stored Discord message was deleted, by posting a fresh summary instead of failing with `Unknown Message (10008)`.

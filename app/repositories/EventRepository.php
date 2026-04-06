@@ -138,10 +138,10 @@ final class EventRepository
         if ($this->hasRecurringSeriesColumn()) {
             $stmt = db()->prepare(
                 'INSERT INTO clan_events (
-                    clan_id, event_name, event_description, host_name, host_discord_user_id, event_start_utc,
+                    clan_id, event_name, event_description, event_location, host_name, host_discord_user_id, event_start_utc,
                     duration_minutes, image_url, discord_channel_id, is_active, is_recurring_weekly, recurring_until_utc, recurring_series_id
                 ) VALUES (
-                    :clan_id, :event_name, :event_description, :host_name, :host_discord_user_id, :event_start_utc,
+                    :clan_id, :event_name, :event_description, :event_location, :host_name, :host_discord_user_id, :event_start_utc,
                     :duration_minutes, :image_url, :discord_channel_id, :is_active, :is_recurring_weekly, :recurring_until_utc, :recurring_series_id
                 )'
             );
@@ -150,6 +150,7 @@ final class EventRepository
                 'clan_id' => currentClanId(),
                 'event_name' => $data['event_name'],
                 'event_description' => $data['event_description'],
+                'event_location' => $data['event_location'] ?? null,
                 'host_name' => $data['host_name'],
                 'host_discord_user_id' => $data['host_discord_user_id'] ?: null,
                 'event_start_utc' => $data['event_start_utc'],
@@ -164,10 +165,10 @@ final class EventRepository
         } else {
             $stmt = db()->prepare(
                 'INSERT INTO clan_events (
-                    clan_id, event_name, event_description, host_name, host_discord_user_id, event_start_utc,
+                    clan_id, event_name, event_description, event_location, host_name, host_discord_user_id, event_start_utc,
                     duration_minutes, image_url, discord_channel_id, is_active, is_recurring_weekly, recurring_until_utc
                 ) VALUES (
-                    :clan_id, :event_name, :event_description, :host_name, :host_discord_user_id, :event_start_utc,
+                    :clan_id, :event_name, :event_description, :event_location, :host_name, :host_discord_user_id, :event_start_utc,
                     :duration_minutes, :image_url, :discord_channel_id, :is_active, :is_recurring_weekly, :recurring_until_utc
                 )'
             );
@@ -176,6 +177,7 @@ final class EventRepository
                 'clan_id' => currentClanId(),
                 'event_name' => $data['event_name'],
                 'event_description' => $data['event_description'],
+                'event_location' => $data['event_location'] ?? null,
                 'host_name' => $data['host_name'],
                 'host_discord_user_id' => $data['host_discord_user_id'] ?: null,
                 'event_start_utc' => $data['event_start_utc'],
@@ -198,6 +200,7 @@ final class EventRepository
                 'UPDATE clan_events SET
                     event_name = :event_name,
                     event_description = :event_description,
+                    event_location = :event_location,
                     host_name = :host_name,
                     host_discord_user_id = :host_discord_user_id,
                     event_start_utc = :event_start_utc,
@@ -216,6 +219,7 @@ final class EventRepository
                 'clan_id' => currentClanId(),
                 'event_name' => $data['event_name'],
                 'event_description' => $data['event_description'],
+                'event_location' => $data['event_location'] ?? null,
                 'host_name' => $data['host_name'],
                 'host_discord_user_id' => $data['host_discord_user_id'] ?: null,
                 'event_start_utc' => $data['event_start_utc'],
@@ -232,6 +236,7 @@ final class EventRepository
                 'UPDATE clan_events SET
                     event_name = :event_name,
                     event_description = :event_description,
+                    event_location = :event_location,
                     host_name = :host_name,
                     host_discord_user_id = :host_discord_user_id,
                     event_start_utc = :event_start_utc,
@@ -249,6 +254,7 @@ final class EventRepository
                 'clan_id' => currentClanId(),
                 'event_name' => $data['event_name'],
                 'event_description' => $data['event_description'],
+                'event_location' => $data['event_location'] ?? null,
                 'host_name' => $data['host_name'],
                 'host_discord_user_id' => $data['host_discord_user_id'] ?: null,
                 'event_start_utc' => $data['event_start_utc'],
@@ -444,6 +450,19 @@ final class EventRepository
             'message_id' => $messageId,
         ]);
     }
+
+    public function deleteWeeklyPost(string $weekStartUtc): void
+    {
+        $stmt = db()->prepare(
+            'DELETE FROM discord_weekly_posts
+             WHERE clan_id = :clan_id AND week_start_utc = :week_start_utc'
+        );
+        $stmt->execute([
+            'clan_id' => currentClanId(),
+            'week_start_utc' => $weekStartUtc,
+        ]);
+    }
+
 
     private function hasRecurringSeriesColumn(): bool
     {
