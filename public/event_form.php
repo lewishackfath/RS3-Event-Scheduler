@@ -8,6 +8,9 @@ $localTime = $formValues['event_time'] ?? '';
 $selectedHostName = (string) ($formValues['host_name'] ?? '');
 $selectedHostId = (string) ($formValues['host_discord_user_id'] ?? '');
 $selectedChannelId = (string) ($formValues['discord_channel_id'] ?? '');
+$currentPage = basename((string) ($_SERVER['PHP_SELF'] ?? ''));
+$isEditPage = $currentPage === 'event_edit.php';
+$isSeriesEvent = $isEditPage && isset($event) && trim((string) ($event['recurring_series_id'] ?? '')) !== '';
 ?>
 <div class="card">
     <form method="post">
@@ -53,8 +56,19 @@ $selectedChannelId = (string) ($formValues['discord_channel_id'] ?? '');
             <div class="field" id="recurring-until-wrap" style="<?= !empty($formValues['is_recurring_weekly']) ? '' : 'display:none;' ?>">
                 <label for="recurring_until_date">Recurring Until</label>
                 <input type="date" id="recurring_until_date" name="recurring_until_date" value="<?= e((string) ($formValues['recurring_until_date'] ?? '')) ?>">
+                <div class="muted" style="margin-top:6px;">Required for weekly recurring events. The app now creates each weekly occurrence in advance.</div>
             </div>
         </div>
+
+        <?php if ($isSeriesEvent): ?>
+            <div class="field">
+                <label>When saving this recurring event, apply changes to:</label>
+                <label><input type="radio" name="recurring_edit_scope" value="single" <?= (($formValues['recurring_edit_scope'] ?? 'single') === 'single') ? 'checked' : '' ?>> This event only</label>
+                <label><input type="radio" name="recurring_edit_scope" value="future" <?= (($formValues['recurring_edit_scope'] ?? '') === 'future') ? 'checked' : '' ?>> This event and future events</label>
+                <label><input type="radio" name="recurring_edit_scope" value="all" <?= (($formValues['recurring_edit_scope'] ?? '') === 'all') ? 'checked' : '' ?>> Entire series</label>
+                <div class="muted" style="margin-top:6px;">Selecting “this event only” detaches this occurrence from the recurring series so it can be customised on its own.</div>
+            </div>
+        <?php endif; ?>
 
         <div class="field">
             <label for="image_url">Custom Image URL</label>

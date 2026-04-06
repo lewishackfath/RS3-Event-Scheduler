@@ -82,6 +82,7 @@ if (!tableExists($pdo, 'clan_events')) {
             is_active TINYINT(1) NOT NULL DEFAULT 1,
             is_recurring_weekly TINYINT(1) NOT NULL DEFAULT 0,
             recurring_until_utc DATETIME NULL,
+            recurring_series_id VARCHAR(64) NULL,
             created_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             CONSTRAINT fk_clan_events_clan FOREIGN KEY (clan_id) REFERENCES clans(id) ON DELETE CASCADE

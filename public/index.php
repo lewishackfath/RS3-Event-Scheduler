@@ -76,7 +76,7 @@ renderHeader('Weekly Schedule');
                     <div class="event-card-body">
                         <div class="event-card-header">
                             <div>
-                                <strong><?= e($event['event_name']) ?></strong>
+                                <strong><?= e($event['event_name']) ?></strong><?php if (!empty($event['recurring_series_id'])): ?><span style="display:inline-block;margin-left:8px;padding:3px 8px;border-radius:999px;background:rgba(37,99,235,.18);color:#93c5fd;font-size:12px;vertical-align:middle;">Recurring</span><?php endif; ?>
                                 <?php if (!empty($event['is_recurring_weekly'])): ?>
                                     <span class="badge">Weekly</span>
                                 <?php endif; ?>

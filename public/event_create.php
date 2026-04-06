@@ -17,6 +17,7 @@ $formValues = [
     'is_active' => 1,
     'is_recurring_weekly' => 0,
     'recurring_until_date' => '',
+    'recurring_edit_scope' => 'single',
 ];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -24,9 +25,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     try {
         $service = new EventService();
-        $data = $service->normaliseFormData($_POST);
-        (new EventRepository())->create($data);
-        setFlash('success', 'Event created successfully.');
+        $service->createFromForm(new EventRepository(), $_POST);
+        setFlash('success', !empty($_POST['is_recurring_weekly']) ? 'Recurring event series created successfully.' : 'Event created successfully.');
         redirect('index.php?date=' . urlencode((string) $_POST['event_date']));
     } catch (Throwable $e) {
         setFlash('error', $e->getMessage());

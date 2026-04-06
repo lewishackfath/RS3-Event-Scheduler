@@ -21,7 +21,10 @@ final class EventService
         if ($eventDate === '' || $eventTime === '') {
             throw new InvalidArgumentException('Event date and time are required.');
         }
-        if ($isRecurringWeekly === 1 && $recurringUntilDate !== '' && $recurringUntilDate < $eventDate) {
+        if ($isRecurringWeekly === 1 && $recurringUntilDate === '') {
+            throw new InvalidArgumentException('Recurring weekly events now require a recurring until date.');
+        }
+        if ($isRecurringWeekly === 1 && $recurringUntilDate < $eventDate) {
             throw new InvalidArgumentException('Recurring end date cannot be earlier than the event date.');
         }
 
@@ -36,9 +39,133 @@ final class EventService
             'discord_channel_id' => trim((string) ($input['discord_channel_id'] ?? appConfig()['clan']['default_discord_channel_id'] ?? '')),
             'is_active' => isset($input['is_active']) ? 1 : 0,
             'is_recurring_weekly' => $isRecurringWeekly,
-            'recurring_until_utc' => $isRecurringWeekly === 1 && $recurringUntilDate !== ''
+            'recurring_until_utc' => $isRecurringWeekly === 1
                 ? clanLocalToUtc($recurringUntilDate, '23:59')
                 : null,
+            'recurring_series_id' => trim((string) ($input['recurring_series_id'] ?? '')),
         ];
+    }
+
+    public function createFromForm(EventRepository $repo, array $input): int
+    {
+        $data = $this->normaliseFormData($input);
+
+        if ((int) $data['is_recurring_weekly'] === 1) {
+            $seriesId = $this->newSeriesId();
+            $events = $this->buildRecurringInstances($data, $seriesId);
+            $firstId = 0;
+            foreach ($events as $eventData) {
+                $createdId = $repo->create($eventData);
+                if ($firstId === 0) {
+                    $firstId = $createdId;
+                }
+            }
+            return $firstId;
+        }
+
+        $data['recurring_series_id'] = null;
+        return $repo->create($data);
+    }
+
+    public function updateFromForm(EventRepository $repo, array $event, array $input): void
+    {
+        $data = $this->normaliseFormData($input);
+        $scope = (string) ($input['recurring_edit_scope'] ?? 'single');
+        $seriesId = trim((string) ($event['recurring_series_id'] ?? ''));
+
+        if ($seriesId === '') {
+            if ((int) $data['is_recurring_weekly'] === 1) {
+                $newSeriesId = $this->newSeriesId();
+                $events = $this->buildRecurringInstances($data, $newSeriesId);
+                $first = array_shift($events);
+                if ($first === null) {
+                    throw new RuntimeException('No recurring events were generated.');
+                }
+
+                $repo->update((int) $event['id'], $first);
+
+                foreach ($events as $eventData) {
+                    $repo->create($eventData);
+                }
+                return;
+            }
+
+            $data['recurring_series_id'] = null;
+            $repo->update((int) $event['id'], $data);
+            return;
+        }
+
+        if ($scope === 'single') {
+            $data['is_recurring_weekly'] = 0;
+            $data['recurring_until_utc'] = null;
+            $data['recurring_series_id'] = null;
+            $repo->update((int) $event['id'], $data);
+            return;
+        }
+
+        $deleteFromUtc = $scope === 'future'
+            ? (string) $event['event_start_utc']
+            : null;
+
+        $repo->deleteSeriesEvents($seriesId, $deleteFromUtc);
+
+        if ((int) $data['is_recurring_weekly'] === 1) {
+            $reuseSeriesId = $scope === 'all' ? $seriesId : $this->newSeriesId();
+            foreach ($this->buildRecurringInstances($data, $reuseSeriesId) as $eventData) {
+                $repo->create($eventData);
+            }
+            return;
+        }
+
+        $data['recurring_series_id'] = null;
+        $data['is_recurring_weekly'] = 0;
+        $data['recurring_until_utc'] = null;
+        $repo->create($data);
+    }
+
+    public function deleteEvent(EventRepository $repo, array $event, string $scope): int
+    {
+        $seriesId = trim((string) ($event['recurring_series_id'] ?? ''));
+
+        if ($seriesId === '') {
+            $repo->delete((int) $event['id']);
+            return 1;
+        }
+
+        if ($scope === 'future') {
+            return $repo->deleteSeriesEvents($seriesId, (string) $event['event_start_utc']);
+        }
+
+        if ($scope === 'all') {
+            return $repo->deleteSeriesEvents($seriesId);
+        }
+
+        $repo->delete((int) $event['id']);
+        return 1;
+    }
+
+    private function buildRecurringInstances(array $data, string $seriesId): array
+    {
+        $startLocal = utcToClanLocal((string) $data['event_start_utc']);
+        $untilLocal = utcToClanLocal((string) $data['recurring_until_utc']);
+        $events = [];
+        $cursor = $startLocal;
+
+        while ($cursor <= $untilLocal) {
+            $eventData = $data;
+            $eventData['event_start_utc'] = $cursor->setTimezone(utcTimezone())->format('Y-m-d H:i:s');
+            $eventData['is_recurring_weekly'] = 1;
+            $eventData['recurring_until_utc'] = $data['recurring_until_utc'];
+            $eventData['recurring_series_id'] = $seriesId;
+            $events[] = $eventData;
+            $cursor = $cursor->modify('+7 days');
+        }
+
+        return $events;
+    }
+
+    private function newSeriesId(): string
+    {
+        return bin2hex(random_bytes(16));
     }
 }

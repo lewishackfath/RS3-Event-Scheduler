@@ -49,3 +49,15 @@ php setup/db_bootstrap.php
 ## Posting to Discord
 
 Open `post_schedule.php` in the web app and post a selected week. The app sends one embed per event in chronological order.
+
+
+## Recurring event management
+
+- Weekly recurring events now require a **Recurring Until** date.
+- The app generates each weekly occurrence as a real event row.
+- Editing a recurring event now supports:
+  - **This event only**
+  - **This event and future events**
+  - **Entire series**
+- Deleting a recurring event now supports the same scope options.
+- Run `php setup/db_bootstrap.php` after deploying this patch so the new `recurring_series_id` column and index are created.

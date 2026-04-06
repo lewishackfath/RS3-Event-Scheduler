@@ -26,9 +26,9 @@ final class EventRepository
              WHERE clan_id = :clan_id
                AND is_active = 1
                AND (
-                    (is_recurring_weekly = 0 AND event_start_utc >= :week_start_utc_1 AND event_start_utc < :week_end_utc_1)
+                    (event_start_utc >= :week_start_utc_1 AND event_start_utc < :week_end_utc_1)
                     OR
-                    (is_recurring_weekly = 1 AND event_start_utc < :week_end_utc_2 AND (recurring_until_utc IS NULL OR recurring_until_utc >= :week_start_utc_2))
+                    (is_recurring_weekly = 1 AND recurring_series_id IS NULL AND event_start_utc < :week_end_utc_2 AND (recurring_until_utc IS NULL OR recurring_until_utc >= :week_start_utc_2))
                )
              ORDER BY event_start_utc ASC, id ASC'
         );
@@ -50,10 +50,10 @@ final class EventRepository
         $stmt = db()->prepare(
             'INSERT INTO clan_events (
                 clan_id, event_name, event_description, host_name, host_discord_user_id, event_start_utc,
-                duration_minutes, image_url, discord_channel_id, is_active, is_recurring_weekly, recurring_until_utc
+                duration_minutes, image_url, discord_channel_id, is_active, is_recurring_weekly, recurring_until_utc, recurring_series_id
             ) VALUES (
                 :clan_id, :event_name, :event_description, :host_name, :host_discord_user_id, :event_start_utc,
-                :duration_minutes, :image_url, :discord_channel_id, :is_active, :is_recurring_weekly, :recurring_until_utc
+                :duration_minutes, :image_url, :discord_channel_id, :is_active, :is_recurring_weekly, :recurring_until_utc, :recurring_series_id
             )'
         );
 
@@ -70,6 +70,7 @@ final class EventRepository
             'is_active' => $data['is_active'],
             'is_recurring_weekly' => $data['is_recurring_weekly'],
             'recurring_until_utc' => $data['recurring_until_utc'],
+            'recurring_series_id' => $data['recurring_series_id'] ?: null,
         ]);
 
         return (int) db()->lastInsertId();
@@ -89,7 +90,8 @@ final class EventRepository
                 discord_channel_id = :discord_channel_id,
                 is_active = :is_active,
                 is_recurring_weekly = :is_recurring_weekly,
-                recurring_until_utc = :recurring_until_utc
+                recurring_until_utc = :recurring_until_utc,
+                recurring_series_id = :recurring_series_id
              WHERE id = :id AND clan_id = :clan_id'
         );
 
@@ -107,6 +109,7 @@ final class EventRepository
             'is_active' => $data['is_active'],
             'is_recurring_weekly' => $data['is_recurring_weekly'],
             'recurring_until_utc' => $data['recurring_until_utc'],
+            'recurring_series_id' => $data['recurring_series_id'] ?: null,
         ]);
     }
 
@@ -117,6 +120,45 @@ final class EventRepository
             'id' => $id,
             'clan_id' => currentClanId(),
         ]);
+    }
+
+    public function getSeriesEvents(string $seriesId, ?string $fromUtc = null): array
+    {
+        $sql = 'SELECT * FROM clan_events WHERE clan_id = :clan_id AND recurring_series_id = :series_id';
+        $params = [
+            'clan_id' => currentClanId(),
+            'series_id' => $seriesId,
+        ];
+
+        if ($fromUtc !== null) {
+            $sql .= ' AND event_start_utc >= :from_utc';
+            $params['from_utc'] = $fromUtc;
+        }
+
+        $sql .= ' ORDER BY event_start_utc ASC, id ASC';
+        $stmt = db()->prepare($sql);
+        $stmt->execute($params);
+
+        return $stmt->fetchAll() ?: [];
+    }
+
+    public function deleteSeriesEvents(string $seriesId, ?string $fromUtc = null): int
+    {
+        $sql = 'DELETE FROM clan_events WHERE clan_id = :clan_id AND recurring_series_id = :series_id';
+        $params = [
+            'clan_id' => currentClanId(),
+            'series_id' => $seriesId,
+        ];
+
+        if ($fromUtc !== null) {
+            $sql .= ' AND event_start_utc >= :from_utc';
+            $params['from_utc'] = $fromUtc;
+        }
+
+        $stmt = db()->prepare($sql);
+        $stmt->execute($params);
+
+        return $stmt->rowCount();
     }
 
     public function recordDiscordPost(int $eventId, string $channelId, string $messageId): void
@@ -141,8 +183,12 @@ final class EventRepository
 
         foreach ($rows as $row) {
             $isRecurring = (int) ($row['is_recurring_weekly'] ?? 0) === 1;
-            if (!$isRecurring) {
-                $expanded[] = $row;
+            $seriesId = trim((string) ($row['recurring_series_id'] ?? ''));
+
+            if (!$isRecurring || $seriesId !== '') {
+                if ((string) $row['event_start_utc'] >= $weekStartUtc && (string) $row['event_start_utc'] < $weekEndUtc) {
+                    $expanded[] = $row;
+                }
                 continue;
             }
 
@@ -152,7 +198,7 @@ final class EventRepository
                 ->setTime((int) $anchorLocal->format('H'), (int) $anchorLocal->format('i'), 0);
             $occurrenceUtc = $occurrenceLocal->setTimezone(utcTimezone())->format('Y-m-d H:i:s');
 
-            if ($occurrenceUtc < $weekStartUtc || $occurrenceUtc > $weekEndUtc) {
+            if ($occurrenceUtc < $weekStartUtc || $occurrenceUtc >= $weekEndUtc) {
                 continue;
             }
             if ($occurrenceUtc < (string) $row['event_start_utc']) {

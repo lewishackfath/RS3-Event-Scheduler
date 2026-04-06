@@ -31,16 +31,23 @@ $formValues = [
     'is_active' => (int) $event['is_active'],
     'is_recurring_weekly' => (int) ($event['is_recurring_weekly'] ?? 0),
     'recurring_until_date' => $recurringUntilDate,
+    'recurring_edit_scope' => 'single',
 ];
+
+$isSeriesEvent = trim((string) ($event['recurring_series_id'] ?? '')) !== '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $formValues = array_merge($formValues, $_POST);
 
     try {
         $service = new EventService();
-        $data = $service->normaliseFormData($_POST);
-        $repo->update($id, $data);
-        setFlash('success', 'Event updated successfully.');
+        $service->updateFromForm($repo, $event, $_POST);
+        $scope = (string) ($_POST['recurring_edit_scope'] ?? 'single');
+        if ($isSeriesEvent && $scope !== 'single') {
+            setFlash('success', 'Recurring event series updated successfully.');
+        } else {
+            setFlash('success', 'Event updated successfully.');
+        }
         redirect('index.php?date=' . urlencode((string) $_POST['event_date']));
     } catch (Throwable $e) {
         setFlash('error', $e->getMessage());
