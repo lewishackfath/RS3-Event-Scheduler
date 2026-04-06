@@ -7,6 +7,7 @@ function renderHeader(string $title): void
     $bgStyle = trim((string) ($brand['background_image_url'] ?? '')) !== ''
         ? 'background-image:url(' . e($brand['background_image_url']) . ');background-size:cover;background-position:center;'
         : 'background:linear-gradient(135deg,#1f2937,#111827);';
+    $user = function_exists('currentUser') ? currentUser() : null;
 
     echo '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">';
     echo '<title>' . e($title) . ' - ' . e(appConfig()['app']['name']) . '</title>';
@@ -16,9 +17,12 @@ function renderHeader(string $title): void
         a:hover{text-decoration:underline}
         .wrap{max-width:1200px;margin:0 auto;padding:24px}
         .hero{padding:24px;border-bottom:1px solid rgba(255,255,255,.08);' . $bgStyle . '}
-        .hero-inner{max-width:1200px;margin:0 auto;display:flex;gap:16px;align-items:center;padding:12px 24px}
+        .hero-inner{max-width:1200px;margin:0 auto;display:flex;gap:16px;align-items:center;justify-content:space-between;padding:12px 24px;flex-wrap:wrap}
+        .hero-left{display:flex;gap:16px;align-items:center}
         .hero img.logo{max-height:56px;max-width:56px;border-radius:12px;background:#fff;padding:4px}
         .nav{display:flex;gap:16px;flex-wrap:wrap;margin-top:12px}
+        .userbox{display:flex;align-items:center;gap:10px;background:rgba(17,24,39,.75);padding:10px 14px;border:1px solid rgba(255,255,255,.08);border-radius:14px}
+        .avatar{width:36px;height:36px;border-radius:999px;object-fit:cover;background:#1f2937}
         .card{background:#111827;border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:18px;box-shadow:0 10px 25px rgba(0,0,0,.2)}
         .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
         .btn{display:inline-block;background:#2563eb;color:#fff;border:none;border-radius:10px;padding:10px 14px;cursor:pointer}
@@ -39,6 +43,7 @@ function renderHeader(string $title): void
     </style>';
     echo '</head><body>';
     echo '<div class="hero"><div class="hero-inner">';
+    echo '<div class="hero-left">';
     if (($brand['logo_url'] ?? '') !== '') {
         echo '<img class="logo" src="' . e($brand['logo_url']) . '" alt="Logo">';
     }
@@ -48,7 +53,19 @@ function renderHeader(string $title): void
     echo '<a href="index.php">Weekly Schedule</a>';
     echo '<a href="event_create.php">Add Event</a>';
     echo '<a href="post_schedule.php">Post to Discord</a>';
-    echo '</div></div></div></div>';
+    echo '</div></div></div>';
+
+    if ($user !== null) {
+        echo '<div class="userbox">';
+        if (($user['avatar_url'] ?? '') !== '') {
+            echo '<img class="avatar" src="' . e($user['avatar_url']) . '" alt="Avatar">';
+        }
+        echo '<div><div>' . e((string) ($user['display_name'] ?? 'Discord User')) . '</div><div class="muted">Authorised via Discord role</div></div>';
+        echo '<a class="btn secondary" href="logout.php">Logout</a>';
+        echo '</div>';
+    }
+
+    echo '</div></div>';
     echo '<div class="wrap">';
 
     $flash = flashMessage();

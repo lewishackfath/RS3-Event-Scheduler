@@ -16,6 +16,11 @@ function appConfig(): array
         return $config;
     }
 
+    $adminRoleIds = array_values(array_filter(array_map(
+        static fn ($value) => trim((string) $value),
+        explode(',', (string) env('ADMIN_ROLE_IDS', ''))
+    ), static fn ($value) => $value !== ''));
+
     $config = [
         'app' => [
             'name' => (string) env('APP_NAME', 'Clan Event Scheduler'),
@@ -46,6 +51,14 @@ function appConfig(): array
         ],
         'discord' => [
             'bot_token' => (string) env('DISCORD_BOT_TOKEN', ''),
+        ],
+        'discord_oauth' => [
+            'client_id' => (string) env('DISCORD_CLIENT_ID', ''),
+            'client_secret' => (string) env('DISCORD_CLIENT_SECRET', ''),
+            'redirect_uri' => (string) env('DISCORD_REDIRECT_URI', ''),
+            'scope' => (string) env('DISCORD_OAUTH_SCOPE', 'identify guilds.members.read'),
+            'guild_id' => (string) env('DISCORD_GUILD_ID', ''),
+            'admin_role_ids' => $adminRoleIds,
         ],
     ];
 
