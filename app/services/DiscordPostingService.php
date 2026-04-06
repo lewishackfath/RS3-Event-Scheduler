@@ -125,11 +125,16 @@ final class DiscordPostingService
         foreach ($events as $event) {
             $eventResults = [];
             $scheduledEventUrl = '';
+            $eventStartUtc = new DateTimeImmutable((string) $event['event_start_utc'], utcTimezone());
+            $nowUtc = new DateTimeImmutable('now', utcTimezone());
+            $canCreateScheduledEvent = $eventStartUtc > $nowUtc;
 
             if ((bool) $config['enable_scheduled_events']) {
                 if (!empty($event['discord_scheduled_event_id'])) {
                     $scheduledEventUrl = buildDiscordScheduledEventUrl((string) $event['discord_scheduled_event_id']);
                     $eventResults[] = 'Native Discord event already exists';
+                } elseif (!$canCreateScheduledEvent) {
+                    $eventResults[] = 'Skipped native Discord event: event start time is already in the past';
                 } else {
                     $scheduled = createExternalScheduledEvent($event);
                     $scheduledEventId = (string) ($scheduled['id'] ?? '');
@@ -186,4 +191,74 @@ final class DiscordPostingService
         return $results;
     }
 
+    public function publishDayOfEvents(?string $date = null): array
+    {
+        $config = appConfig()['discord'];
+        $range = dayRangeFromDate($date);
+        $events = $this->events->getForDay($range['day_start_utc'], $range['day_end_utc']);
+        $results = [];
+
+        if ($events === []) {
+            return [[
+                'scope' => 'day_of_events',
+                'status' => 'skipped',
+                'message' => 'No events found for ' . $range['day_start_local']->format('j M Y') . '.',
+            ]];
+        }
+
+        foreach ($events as $event) {
+            $eventResults = [];
+            $scheduledEventUrl = '';
+
+            if ((bool) $config['enable_scheduled_events']) {
+                if (!empty($event['discord_scheduled_event_id'])) {
+                    $scheduledEventUrl = buildDiscordScheduledEventUrl((string) $event['discord_scheduled_event_id']);
+                    $eventResults[] = 'Native Discord event already exists';
+                } else {
+                    $scheduled = createExternalScheduledEvent($event);
+                    $scheduledEventId = (string) ($scheduled['id'] ?? '');
+                    if ($scheduledEventId !== '') {
+                        $this->events->markScheduledEvent((int) $event['id'], $scheduledEventId);
+                        $scheduledEventUrl = buildDiscordScheduledEventUrl($scheduledEventId);
+                        $eventResults[] = 'Created native Discord event';
+                    }
+                }
+            } else {
+                $eventResults[] = 'Scheduled event creation disabled';
+            }
+
+            if ((bool) $config['enable_daily_event_posts']) {
+                $channelId = trim((string) ($event['discord_channel_id'] ?? ''));
+                if ($channelId === '') {
+                    $channelId = trim((string) $config['daily_event_channel_id']);
+                }
+                if ($channelId === '') {
+                    $channelId = trim((string) appConfig()['clan']['default_discord_channel_id']);
+                }
+
+                if ($channelId === '') {
+                    $eventResults[] = 'Skipped daily post: no channel configured';
+                } else {
+                    $content = $scheduledEventUrl !== '' ? 'Discord event: ' . $scheduledEventUrl : '';
+                    $response = postDiscordMessage($channelId, $content, [buildEventEmbed($event)]);
+                    $messageId = (string) ($response['id'] ?? '');
+                    if ($messageId !== '') {
+                        $this->events->markDailyPost((int) $event['id'], $channelId, $messageId);
+                        $eventResults[] = 'Posted daily event embed';
+                    }
+                }
+            } else {
+                $eventResults[] = 'Daily event posting disabled';
+            }
+
+            $results[] = [
+                'scope' => 'day_of_events',
+                'event_name' => (string) $event['event_name'],
+                'status' => 'processed',
+                'message' => implode(' · ', $eventResults),
+            ];
+        }
+
+        return $results;
+    }
 }

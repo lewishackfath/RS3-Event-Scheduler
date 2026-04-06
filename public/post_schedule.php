@@ -24,6 +24,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             setFlash('success', $message !== '' ? $message : 'Weekly summary completed.');
             redirect('post_schedule.php?date=' . urlencode((string) ($_POST['week_date'] ?? $weekRange['week_start_local']->format('Y-m-d'))));
         }
+
+        if ($action === 'daily_events') {
+            $results = $service->publishDayOfEvents((string) ($_POST['day_date'] ?? ''));
+            $message = implode(' | ', array_map(static fn(array $r): string => (string) ($r['event_name'] ?? $r['scope'] ?? 'Result') . ': ' . (string) ($r['message'] ?? ''), $results));
+            setFlash('success', $message !== '' ? $message : 'Daily event publishing completed.');
+            redirect('post_schedule.php?day=' . urlencode((string) ($_POST['day_date'] ?? $dayRange['day_start_local']->format('Y-m-d'))));
+        }
+
         if ($action === 'sync_pending') {
             $results = $service->syncPendingDiscordItemsForToday((string) ($_POST['day_date'] ?? ''));
             $message = implode(' | ', array_map(static fn(array $r): string => (string) ($r['event_name'] ?? $r['scope'] ?? 'Result') . ': ' . (string) ($r['message'] ?? ''), $results));
@@ -57,11 +65,26 @@ renderHeader('Discord Publishing');
         </form>
     </div>
 
+    <div class="card">
+        <h2 class="mt-0">Day-of Event Publishing</h2>
+        <p class="muted">Creates native external Discord events and posts daily event embeds for the selected day.</p>
+        <form method="post">
+            <input type="hidden" name="action" value="daily_events">
+            <div class="field">
+                <label for="day_date">Event Date</label>
+                <input type="date" id="day_date" name="day_date" value="<?= e($dayRange['day_start_local']->format('Y-m-d')) ?>">
+            </div>
+            <div class="actions">
+                <button class="btn" type="submit">Run Day-of Publisher</button>
+                <a class="btn secondary" href="index.php?date=<?= e($dayRange['day_start_local']->format('Y-m-d')) ?>">View Schedule</a>
+            </div>
+        </form>
+    </div>
 </div>
 
     <div class="card">
         <h2 class="mt-0">Sync Missing Discord Items</h2>
-        <p class="muted">Creates any missing daily embeds or native Discord events for the selected day, while preserving your existing .env Discord channel configuration.</p>
+        <p class="muted">Creates any missing daily embeds or native Discord events for today only, while preserving your existing .env Discord channel configuration.</p>
         <form method="post">
             <input type="hidden" name="action" value="sync_pending">
             <div class="field">
@@ -79,8 +102,9 @@ renderHeader('Discord Publishing');
     <div class="muted mb-8">Run these directly from your server cron. No web token is required.</div>
     <?php $cronDir = dirname(__DIR__) . '/cron'; ?>
     <div class="break-all mb-10"><strong>Weekly:</strong> <code>php <?= e($cronDir . '/cron_weekly_summary.php') ?></code></div>
-    <div class="break-all"><strong>Discord Sync:</strong> <code>php <?= e($cronDir . '/cron_sync_discord.php') ?></code></div>
-<div class="muted mt-8">Optional date argument for weekly and sync scripts: <code>php /full/path/to/script.php 2026-04-07</code></div>
+    <div class="break-all mb-10"><strong>Daily:</strong> <code>php <?= e($cronDir . '/cron_daily_events.php') ?></code></div>
+    <div class="break-all"><strong>Sync Missing:</strong> <code>php <?= e($cronDir . '/cron_sync_discord.php') ?></code></div>
+<div class="muted mt-8">Optional date argument for daily, weekly, and sync scripts: <code>php /full/path/to/script.php 2026-04-07</code></div>
 </div>
 
 <div class="grid">

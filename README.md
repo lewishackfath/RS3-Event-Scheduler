@@ -17,7 +17,7 @@ A lightweight PHP web app for managing a weekly clan event schedule and posting 
 - Day-of daily event embeds
 - Day-of native Discord scheduled events using the external event type
 - Manual Sync / Cancel actions that preserve existing .env Discord channel settings
-- Optional cron to backfill missing Discord items for the selected day
+- Optional cron to backfill missing Discord items for today only
 - Idempotent database bootstrap script that creates and updates tables
 
 ## Requirements
@@ -61,34 +61,30 @@ php setup/db_bootstrap.php
 Open `post_schedule.php` in the web app to:
 
 - post or update the weekly summary
-- run the Discord sync manually
-- copy the server cron commands
+- run the day-of event publisher manually
+- copy the cron URLs
 
-### Cron scripts
+### Cron endpoints
 
-The app includes:
+The patch includes:
 
-- `cron/cron_weekly_summary.php`
-- `cron/cron_sync_discord.php`
+- `cron_weekly_summary.php`
+- `cron_daily_events.php`
+- `cron_sync_discord.php`
 
-These are intended to be run directly on the server, for example:
+Both require a matching `CRON_TOKEN` value.
 
-```bash
-php /full/path/to/cron/cron_weekly_summary.php
-php /full/path/to/cron/cron_sync_discord.php
-```
+Example:
 
-Both scripts also accept an optional date argument:
-
-```bash
-php /full/path/to/cron/cron_weekly_summary.php 2026-04-07
-php /full/path/to/cron/cron_sync_discord.php 2026-04-07
+```text
+https://events.example.com/cron_weekly_summary.php?token=your-secret
+https://events.example.com/cron_daily_events.php?token=your-secret
 ```
 
 ## Suggested cron usage
 
 - Weekly summary: once per week on your preferred day and time
-- Discord sync: once per day shortly after midnight clan time
+- Day-of events: once per day shortly after midnight clan time
 
 ## This patch adds
 
@@ -97,7 +93,7 @@ php /full/path/to/cron/cron_sync_discord.php 2026-04-07
   - daily message tracking
   - native scheduled event tracking
 - manual Discord Publishing admin page
-- server-side cron scripts with no public token requirement
+- token-protected cron endpoints
 
 
 ## Location field
