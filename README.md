@@ -61,3 +61,14 @@ Open `post_schedule.php` in the web app and post a selected week. The app sends 
   - **Entire series**
 - Deleting a recurring event now supports the same scope options.
 - Run `php setup/db_bootstrap.php` after deploying this patch so the new `recurring_series_id` column and index are created.
+
+
+## Important recurring events note
+
+If `setup/db_bootstrap.php` has **not** yet been run and the `recurring_series_id` column does not exist, the app now falls back to legacy single-row weekly recurring behaviour to avoid duplicate future events.
+
+For full recurring series management, run:
+
+```bash
+php setup/db_bootstrap.php
+```

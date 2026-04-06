@@ -51,6 +51,11 @@ final class EventService
         $data = $this->normaliseFormData($input);
 
         if ((int) $data['is_recurring_weekly'] === 1) {
+            if (!$repo->supportsRecurringSeries()) {
+                $data['recurring_series_id'] = null;
+                return $repo->create($data);
+            }
+
             $seriesId = $this->newSeriesId();
             $events = $this->buildRecurringInstances($data, $seriesId);
             $firstId = 0;
@@ -72,6 +77,12 @@ final class EventService
         $data = $this->normaliseFormData($input);
         $scope = (string) ($input['recurring_edit_scope'] ?? 'single');
         $seriesId = trim((string) ($event['recurring_series_id'] ?? ''));
+
+        if (!$repo->supportsRecurringSeries()) {
+            $data['recurring_series_id'] = null;
+            $repo->update((int) $event['id'], $data);
+            return;
+        }
 
         if ($seriesId === '') {
             if ((int) $data['is_recurring_weekly'] === 1) {

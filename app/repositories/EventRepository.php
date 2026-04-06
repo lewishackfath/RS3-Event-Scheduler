@@ -9,6 +9,11 @@ final class EventRepository
 {
     private ?bool $hasRecurringSeriesId = null;
 
+    public function supportsRecurringSeries(): bool
+    {
+        return $this->hasRecurringSeriesColumn();
+    }
+
     public function getById(int $id): ?array
     {
         $sql = 'SELECT * FROM clan_events WHERE id = :id AND clan_id = :clan_id LIMIT 1';
