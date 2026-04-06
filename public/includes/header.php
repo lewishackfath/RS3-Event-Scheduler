@@ -13,8 +13,8 @@ function renderHeader(string $title): void
     echo '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">';
     echo '<title>' . e($title) . ' - ' . e(appConfig()['app']['name']) . '</title>';
     echo '<link rel="stylesheet" href="assets/css/app.css">';
-    echo '</head><body>';
-    echo '<div class="hero" style="--hero-background:' . $bgValue . ';"><div class="hero-inner">';
+    echo '</head><body style="--hero-background:' . $bgValue . ';">';
+    echo '<div class="hero"><div class="hero-inner">';
     echo '<div class="hero-left">';
     if (($brand['logo_url'] ?? '') !== '') {
         echo '<img class="logo" src="' . e((string) $brand['logo_url']) . '" alt="' . e(currentClanName()) . '">';
