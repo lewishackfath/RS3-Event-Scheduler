@@ -7,14 +7,7 @@ $localDate = $formValues['event_date'] ?? '';
 $localTime = $formValues['event_time'] ?? '';
 $selectedHostName = (string) ($formValues['host_name'] ?? '');
 $selectedHostId = (string) ($formValues['host_discord_user_id'] ?? '');
-$channelFetchError = null;
-$channels = [];
-
-try {
-    $channels = fetchGuildChannels((string) appConfig()['discord_oauth']['guild_id']);
-} catch (Throwable $e) {
-    $channelFetchError = $e->getMessage();
-}
+$selectedChannelId = (string) ($formValues['discord_channel_id'] ?? '');
 ?>
 <div class="card">
     <form method="post">
@@ -37,21 +30,10 @@ try {
             </div>
             <div class="field">
                 <label for="discord_channel_id">Discord Channel</label>
-                <?php if ($channels !== []): ?>
-                    <select id="discord_channel_id" name="discord_channel_id">
-                        <option value="">Use default channel</option>
-                        <?php foreach ($channels as $channel): ?>
-                            <option value="<?= e($channel['id']) ?>" <?= (string) ($formValues['discord_channel_id'] ?? '') === (string) $channel['id'] ? 'selected' : '' ?>>
-                                #<?= e($channel['name']) ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                <?php else: ?>
-                    <input type="text" id="discord_channel_id" name="discord_channel_id" value="<?= e((string) ($formValues['discord_channel_id'] ?? appConfig()['clan']['default_discord_channel_id'])) ?>">
-                    <?php if ($channelFetchError): ?>
-                        <div class="muted" style="margin-top:6px;">Could not load channels automatically: <?= e($channelFetchError) ?></div>
-                    <?php endif; ?>
-                <?php endif; ?>
+                <select id="discord_channel_id" name="discord_channel_id" data-selected-channel="<?= e($selectedChannelId) ?>">
+                    <option value="">Use default channel</option>
+                </select>
+                <div id="channel-picker-status" class="muted" style="margin-top:6px;">Loading available channels…</div>
             </div>
             <div class="field field-full">
                 <label for="host_search">Event Host</label>
@@ -97,11 +79,17 @@ try {
     const results = document.getElementById('host-picker-results');
     const recurringToggle = document.getElementById('is_recurring_weekly');
     const recurringWrap = document.getElementById('recurring-until-wrap');
+    const channelSelect = document.getElementById('discord_channel_id');
+    const channelStatus = document.getElementById('channel-picker-status');
     let controller = null;
 
     function hideResults() {
         results.hidden = true;
         results.innerHTML = '';
+    }
+
+    function escapeHtml(value) {
+        return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
 
     function renderResults(items) {
@@ -116,10 +104,42 @@ try {
             if (item.nick && item.nick !== item.display_name) meta.unshift('Nick: ' + item.nick);
             if (item.global_name && item.global_name !== item.display_name) meta.push('Global: ' + item.global_name);
             return '<button type="button" class="search-result-item" data-id="' + encodeURIComponent(item.id) + '" data-name="' + encodeURIComponent(item.display_name) + '">' +
-                '<strong>' + item.display_name.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</strong><span class="muted">' + meta.join(' · ').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</span>' +
+                '<strong>' + escapeHtml(item.display_name) + '</strong><span class="muted">' + escapeHtml(meta.join(' · ')) + '</span>' +
                 '</button>';
         }).join('');
         results.hidden = false;
+    }
+
+    function loadChannels() {
+        const selected = channelSelect.getAttribute('data-selected-channel') || '';
+        fetch('api/discord_lookup.php?type=channels')
+            .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+            .then(function (payload) {
+                if (!payload.ok) {
+                    throw new Error(payload.data && payload.data.error ? payload.data.error : 'Unable to load channels.');
+                }
+                const items = Array.isArray(payload.data.items) ? payload.data.items : [];
+                items.forEach(function (item) {
+                    const opt = document.createElement('option');
+                    opt.value = item.id;
+                    opt.textContent = '#' + item.name;
+                    if (selected !== '' && selected === String(item.id)) {
+                        opt.selected = true;
+                    }
+                    channelSelect.appendChild(opt);
+                });
+                channelStatus.textContent = items.length ? 'Loaded ' + items.length + ' channels.' : 'No channels found. You can still use the default channel.';
+            })
+            .catch(function (err) {
+                const opt = document.createElement('option');
+                opt.value = selected;
+                opt.textContent = selected !== '' ? selected : 'Use default channel';
+                if (selected !== '') {
+                    opt.selected = true;
+                    channelSelect.appendChild(opt);
+                }
+                channelStatus.textContent = 'Could not load channels automatically: ' + err.message;
+            });
     }
 
     hostInput.addEventListener('input', function () {
@@ -132,13 +152,16 @@ try {
         if (controller) controller.abort();
         controller = new AbortController();
         fetch('api/discord_lookup.php?type=members&q=' + encodeURIComponent(q), {signal: controller.signal})
-            .then(function (r) { return r.json(); })
+            .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
             .then(function (payload) {
-                renderResults(Array.isArray(payload.items) ? payload.items : []);
+                if (!payload.ok) {
+                    throw new Error(payload.data && payload.data.error ? payload.data.error : 'Could not search Discord users.');
+                }
+                renderResults(Array.isArray(payload.data.items) ? payload.data.items : []);
             })
             .catch(function (err) {
                 if (err.name !== 'AbortError') {
-                    results.innerHTML = '<div class="search-result-item muted">Could not search Discord users.</div>';
+                    results.innerHTML = '<div class="search-result-item muted">' + escapeHtml(err.message || 'Could not search Discord users.') + '</div>';
                     results.hidden = false;
                 }
             });
@@ -161,5 +184,7 @@ try {
     recurringToggle.addEventListener('change', function () {
         recurringWrap.style.display = recurringToggle.checked ? '' : 'none';
     });
+
+    loadChannels();
 })();
 </script>
