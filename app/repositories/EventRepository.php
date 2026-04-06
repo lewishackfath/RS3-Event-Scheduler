@@ -358,17 +358,7 @@ final class EventRepository
 
     public function recordDiscordPost(int $eventId, string $channelId, string $messageId): void
     {
-        $stmt = db()->prepare(
-            'INSERT INTO discord_event_posts (clan_id, event_id, discord_channel_id, discord_message_id, posted_at_utc)
-             VALUES (:clan_id, :event_id, :discord_channel_id, :discord_message_id, UTC_TIMESTAMP())'
-        );
-
-        $stmt->execute([
-            'clan_id' => currentClanId(),
-            'event_id' => $eventId,
-            'discord_channel_id' => $channelId,
-            'discord_message_id' => $messageId,
-        ]);
+        // Legacy table removed. No-op retained for backwards compatibility.
     }
 
     public function markDailyPost(int $eventId, string $channelId, string $messageId): void

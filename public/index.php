@@ -97,7 +97,6 @@ renderHeader('Weekly Schedule');
                             <div><span class="muted">Gametime:</span> <?= e((new DateTimeImmutable($event['event_start_utc'], new DateTimeZone('UTC')))->format('D j M Y, H:i')) ?> UTC</div>
                             <div><span class="muted">Event Host:</span> <?= e($event['host_name'] ?: 'TBC') ?></div>
                             <div><span class="muted">Location:</span> <?= e(($event['event_location'] ?? '') !== '' ? $event['event_location'] : (appConfig()['discord']['event_location_default'] ?? 'RuneScape - In Game')) ?></div>
-                            <div><span class="muted">Discord Channel:</span> <?= e($event['discord_channel_id'] ?: appConfig()['clan']['default_discord_channel_id']) ?></div>
                         </div>
                         <?php if (!empty($event['event_description'])): ?>
                             <div class="event-description"><?= nl2br(e($event['event_description'])) ?></div>

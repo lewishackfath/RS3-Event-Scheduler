@@ -33,11 +33,11 @@ $isSeriesEvent = $isEditPage && isset($event) && trim((string) ($event['recurrin
                 <input type="number" id="duration_minutes" name="duration_minutes" min="0" value="<?= e((string) ($formValues['duration_minutes'] ?? '')) ?>">
             </div>
             <div class="field">
-                <label for="discord_channel_id">Discord Channel</label>
+                <label for="discord_channel_id">Discord Channel Override</label>
                 <select id="discord_channel_id" name="discord_channel_id" data-selected-channel="<?= e($selectedChannelId) ?>">
-                    <option value="">Use default channel</option>
+                    <option value="">Use default daily channel</option>
                 </select>
-                <div id="channel-picker-status" class="muted" style="margin-top:6px;">Loading available channels…</div>
+                <div id="channel-picker-status" class="muted" style="margin-top:6px;">Loading available channels…</div><div class="muted" style="margin-top:6px;">Leave blank to use <code>DISCORD_DAILY_EVENT_CHANNEL_ID</code> from your .env file.</div>
             </div>
             <div class="field field-full">
                 <label for="host_search">Event Host</label>
@@ -163,7 +163,7 @@ $isSeriesEvent = $isEditPage && isset($event) && trim((string) ($event['recurrin
             .catch(function (err) {
                 const opt = document.createElement('option');
                 opt.value = selected;
-                opt.textContent = selected !== '' ? selected : 'Use default channel';
+                opt.textContent = selected !== '' ? selected : 'Use default daily channel';
                 if (selected !== '') {
                     opt.selected = true;
                     channelSelect.appendChild(opt);

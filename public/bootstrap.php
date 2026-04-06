@@ -6,11 +6,14 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 }
 
 require_once dirname(__DIR__) . '/app/config/config.php';
+require_once dirname(__DIR__) . '/setup/db_bootstrap.php';
 require_once dirname(__DIR__) . '/app/lib/helpers.php';
 require_once dirname(__DIR__) . '/app/lib/auth.php';
 require_once dirname(__DIR__) . '/app/lib/time.php';
 require_once dirname(__DIR__) . '/app/repositories/EventRepository.php';
 require_once dirname(__DIR__) . '/app/services/EventService.php';
+
+runDatabaseBootstrap(false);
 
 $publicAuthPages = ['index.php', 'login.php', 'oauth_callback.php', 'logout.php', 'cron_daily_events.php', 'cron_weekly_summary.php', 'cron_sync_discord.php'];
 $currentPage = basename((string) ($_SERVER['PHP_SELF'] ?? 'index.php'));

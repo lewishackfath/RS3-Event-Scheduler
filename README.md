@@ -101,3 +101,20 @@ https://events.example.com/cron_daily_events.php?token=your-secret
 Events now support an optional `Location` value. If left blank, Discord native scheduled events continue to fall back to `DISCORD_EVENT_LOCATION_DEFAULT` from `.env`.
 
 The weekly summary flow now also recovers automatically if the previously stored Discord message was deleted, by posting a fresh summary instead of failing with `Unknown Message (10008)`.
+
+
+## Discord channel override
+
+`discord_channel_id` now acts only as an optional **Discord Channel Override** for daily event posts. It is blank by default and is **not prefilled**. When left blank, the app uses `DISCORD_DAILY_EVENT_CHANNEL_ID` from `.env`.
+
+The weekly summary always uses `DISCORD_WEEKLY_SUMMARY_CHANNEL_ID` from `.env`.
+
+
+## Automatic bootstrap
+
+The app now loads the database bootstrap on every request. The bootstrap function checks that the schema is correct and only applies missing changes, so it is safe to leave enabled.
+
+
+## Database cleanup
+
+The legacy `discord_event_posts` table is no longer used and is dropped by the bootstrap, per your request.

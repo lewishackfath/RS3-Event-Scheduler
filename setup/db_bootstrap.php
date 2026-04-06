@@ -30,227 +30,218 @@ function indexExists(PDO $pdo, string $table, string $index): bool
     return (int) $stmt->fetchColumn() > 0;
 }
 
-$pdo = db();
-$pdo->exec('SET NAMES utf8mb4');
-
-echo "Running database bootstrap...\n";
-
-if (!tableExists($pdo, 'clans')) {
-    $pdo->exec(
-        'CREATE TABLE clans (
-            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-            name VARCHAR(150) NOT NULL,
-            timezone VARCHAR(100) NOT NULL DEFAULT "UTC",
-            created_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
-    );
-    echo "Created clans table.\n";
-} else {
-    if (!columnExists($pdo, 'clans', 'timezone')) {
-        $pdo->exec('ALTER TABLE clans ADD COLUMN timezone VARCHAR(100) NOT NULL DEFAULT "UTC" AFTER name');
-        echo "Added clans.timezone column.\n";
-    }
-    if (!columnExists($pdo, 'clans', 'created_at_utc')) {
-        $pdo->exec('ALTER TABLE clans ADD COLUMN created_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP');
-        echo "Added clans.created_at_utc column.\n";
-    }
-    if (!columnExists($pdo, 'clans', 'updated_at_utc')) {
-        $pdo->exec('ALTER TABLE clans ADD COLUMN updated_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP');
-        echo "Added clans.updated_at_utc column.\n";
+function safeDropLegacyTable(PDO $pdo, string $table): void
+{
+    if (tableExists($pdo, $table)) {
+        $pdo->exec('DROP TABLE `' . str_replace('`', '``', $table) . '`');
     }
 }
 
-if (!tableExists($pdo, 'clan_events')) {
-    $pdo->exec(
-        'CREATE TABLE clan_events (
-            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-            clan_id INT UNSIGNED NOT NULL,
-            event_name VARCHAR(255) NOT NULL,
-            event_description TEXT NULL,
-            event_location VARCHAR(255) NULL,
-            host_name VARCHAR(255) NULL,
-            host_discord_user_id VARCHAR(32) NULL,
-            event_start_utc DATETIME NOT NULL,
-            duration_minutes INT UNSIGNED NULL,
-            image_url VARCHAR(1000) NULL,
-            discord_channel_id VARCHAR(32) NULL,
-            is_active TINYINT(1) NOT NULL DEFAULT 1,
-            is_recurring_weekly TINYINT(1) NOT NULL DEFAULT 0,
-            recurring_until_utc DATETIME NULL,
-            recurring_series_id VARCHAR(64) NULL,
-            discord_daily_channel_id VARCHAR(32) NULL,
-            discord_daily_message_id VARCHAR(32) NULL,
-            discord_daily_posted_at_utc DATETIME NULL,
-            discord_scheduled_event_id VARCHAR(32) NULL,
-            discord_scheduled_event_created_at_utc DATETIME NULL,
-            created_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            CONSTRAINT fk_clan_events_clan FOREIGN KEY (clan_id) REFERENCES clans(id) ON DELETE CASCADE
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
-    );
-    echo "Created clan_events table.\n";
-} else {
-    $requiredColumns = [
-        'clan_id' => 'ALTER TABLE clan_events ADD COLUMN clan_id INT UNSIGNED NOT NULL AFTER id',
-        'event_name' => 'ALTER TABLE clan_events ADD COLUMN event_name VARCHAR(255) NOT NULL AFTER clan_id',
-        'event_description' => 'ALTER TABLE clan_events ADD COLUMN event_description TEXT NULL AFTER event_name',
-        'event_location' => 'ALTER TABLE clan_events ADD COLUMN event_location VARCHAR(255) NULL AFTER event_description',
-        'host_name' => 'ALTER TABLE clan_events ADD COLUMN host_name VARCHAR(255) NULL AFTER event_location',
-        'host_discord_user_id' => 'ALTER TABLE clan_events ADD COLUMN host_discord_user_id VARCHAR(32) NULL AFTER host_name',
-        'event_start_utc' => 'ALTER TABLE clan_events ADD COLUMN event_start_utc DATETIME NOT NULL AFTER host_discord_user_id',
-        'duration_minutes' => 'ALTER TABLE clan_events ADD COLUMN duration_minutes INT UNSIGNED NULL AFTER event_start_utc',
-        'image_url' => 'ALTER TABLE clan_events ADD COLUMN image_url VARCHAR(1000) NULL AFTER duration_minutes',
-        'discord_channel_id' => 'ALTER TABLE clan_events ADD COLUMN discord_channel_id VARCHAR(32) NULL AFTER image_url',
-        'is_active' => 'ALTER TABLE clan_events ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1 AFTER discord_channel_id',
-        'is_recurring_weekly' => 'ALTER TABLE clan_events ADD COLUMN is_recurring_weekly TINYINT(1) NOT NULL DEFAULT 0 AFTER is_active',
-        'recurring_until_utc' => 'ALTER TABLE clan_events ADD COLUMN recurring_until_utc DATETIME NULL AFTER is_recurring_weekly',
-        'recurring_series_id' => 'ALTER TABLE clan_events ADD COLUMN recurring_series_id VARCHAR(64) NULL AFTER recurring_until_utc',
-        'discord_daily_channel_id' => 'ALTER TABLE clan_events ADD COLUMN discord_daily_channel_id VARCHAR(32) NULL AFTER recurring_series_id',
-        'discord_daily_message_id' => 'ALTER TABLE clan_events ADD COLUMN discord_daily_message_id VARCHAR(32) NULL AFTER discord_daily_channel_id',
-        'discord_daily_posted_at_utc' => 'ALTER TABLE clan_events ADD COLUMN discord_daily_posted_at_utc DATETIME NULL AFTER discord_daily_message_id',
-        'discord_scheduled_event_id' => 'ALTER TABLE clan_events ADD COLUMN discord_scheduled_event_id VARCHAR(32) NULL AFTER discord_daily_posted_at_utc',
-        'discord_scheduled_event_created_at_utc' => 'ALTER TABLE clan_events ADD COLUMN discord_scheduled_event_created_at_utc DATETIME NULL AFTER discord_scheduled_event_id',
-        'status' => 'ALTER TABLE clan_events ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT "scheduled" AFTER discord_scheduled_event_created_at_utc',
-        'created_at_utc' => 'ALTER TABLE clan_events ADD COLUMN created_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER status',
-        'updated_at_utc' => 'ALTER TABLE clan_events ADD COLUMN updated_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at_utc',
-    ];
+function runDatabaseBootstrap(bool $verbose = false): void
+{
+    static $ran = false;
+    if ($ran) {
+        return;
+    }
+    $ran = true;
 
-    foreach ($requiredColumns as $column => $sql) {
-        if (!columnExists($pdo, 'clan_events', $column)) {
-            $pdo->exec($sql);
-            echo "Added clan_events.{$column} column.\n";
+    $pdo = db();
+    $pdo->exec('SET NAMES utf8mb4');
+
+    $log = static function (string $message) use ($verbose): void {
+        if ($verbose) {
+            echo $message . "\n";
         }
-    }
-}
+    };
 
-if (!indexExists($pdo, 'clan_events', 'idx_clan_start')) {
-    $pdo->exec('CREATE INDEX idx_clan_start ON clan_events (clan_id, event_start_utc)');
-    echo "Created idx_clan_start index.\n";
-}
+    $log('Running database bootstrap...');
 
-if (!indexExists($pdo, 'clan_events', 'idx_clan_active_start')) {
-    $pdo->exec('CREATE INDEX idx_clan_active_start ON clan_events (clan_id, is_active, event_start_utc)');
-    echo "Created idx_clan_active_start index.\n";
-}
-
-if (!indexExists($pdo, 'clan_events', 'idx_clan_recurring')) {
-    $pdo->exec('CREATE INDEX idx_clan_recurring ON clan_events (clan_id, is_recurring_weekly, recurring_until_utc)');
-    echo "Created idx_clan_recurring index.\n";
-}
-
-if (!indexExists($pdo, 'clan_events', 'idx_clan_events_series')) {
-    $pdo->exec('CREATE INDEX idx_clan_events_series ON clan_events (clan_id, recurring_series_id, event_start_utc)');
-    echo "Created idx_clan_events_series index.\n";
-}
-
-if (!tableExists($pdo, 'discord_event_posts')) {
-    $pdo->exec(
-        'CREATE TABLE discord_event_posts (
-            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-            clan_id INT UNSIGNED NOT NULL,
-            event_id INT UNSIGNED NOT NULL,
-            discord_channel_id VARCHAR(32) NOT NULL,
-            discord_message_id VARCHAR(32) NOT NULL,
-            posted_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at_utc DATETIME NULL,
-            CONSTRAINT fk_discord_event_posts_clan FOREIGN KEY (clan_id) REFERENCES clans(id) ON DELETE CASCADE,
-            CONSTRAINT fk_discord_event_posts_event FOREIGN KEY (event_id) REFERENCES clan_events(id) ON DELETE CASCADE
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
-    );
-    echo "Created discord_event_posts table.\n";
-} else {
-    $requiredColumns = [
-        'clan_id' => 'ALTER TABLE discord_event_posts ADD COLUMN clan_id INT UNSIGNED NOT NULL AFTER id',
-        'event_id' => 'ALTER TABLE discord_event_posts ADD COLUMN event_id INT UNSIGNED NOT NULL AFTER clan_id',
-        'discord_channel_id' => 'ALTER TABLE discord_event_posts ADD COLUMN discord_channel_id VARCHAR(32) NOT NULL AFTER event_id',
-        'discord_message_id' => 'ALTER TABLE discord_event_posts ADD COLUMN discord_message_id VARCHAR(32) NOT NULL AFTER discord_channel_id',
-        'posted_at_utc' => 'ALTER TABLE discord_event_posts ADD COLUMN posted_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER discord_message_id',
-        'updated_at_utc' => 'ALTER TABLE discord_event_posts ADD COLUMN updated_at_utc DATETIME NULL AFTER posted_at_utc',
-    ];
-
-    foreach ($requiredColumns as $column => $sql) {
-        if (!columnExists($pdo, 'discord_event_posts', $column)) {
-            $pdo->exec($sql);
-            echo "Added discord_event_posts.{$column} column.\n";
-        }
-    }
-}
-
-if (!indexExists($pdo, 'discord_event_posts', 'idx_clan_event')) {
-    $pdo->exec('CREATE INDEX idx_clan_event ON discord_event_posts (clan_id, event_id)');
-    echo "Created idx_clan_event index.\n";
-}
-
-if (!tableExists($pdo, 'discord_weekly_posts')) {
-    $pdo->exec(
-        'CREATE TABLE discord_weekly_posts (
-            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-            clan_id INT UNSIGNED NOT NULL,
-            week_start_utc DATETIME NOT NULL,
-            discord_channel_id VARCHAR(32) NOT NULL,
-            discord_message_id VARCHAR(32) NOT NULL,
-            posted_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at_utc DATETIME NULL,
-            CONSTRAINT fk_discord_weekly_posts_clan FOREIGN KEY (clan_id) REFERENCES clans(id) ON DELETE CASCADE
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
-    );
-    echo "Created discord_weekly_posts table.\n";
-} else {
-    $requiredColumns = [
-        'clan_id' => 'ALTER TABLE discord_weekly_posts ADD COLUMN clan_id INT UNSIGNED NOT NULL AFTER id',
-        'week_start_utc' => 'ALTER TABLE discord_weekly_posts ADD COLUMN week_start_utc DATETIME NOT NULL AFTER clan_id',
-        'discord_channel_id' => 'ALTER TABLE discord_weekly_posts ADD COLUMN discord_channel_id VARCHAR(32) NOT NULL AFTER week_start_utc',
-        'discord_message_id' => 'ALTER TABLE discord_weekly_posts ADD COLUMN discord_message_id VARCHAR(32) NOT NULL AFTER discord_channel_id',
-        'posted_at_utc' => 'ALTER TABLE discord_weekly_posts ADD COLUMN posted_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER discord_message_id',
-        'updated_at_utc' => 'ALTER TABLE discord_weekly_posts ADD COLUMN updated_at_utc DATETIME NULL AFTER posted_at_utc',
-    ];
-
-    foreach ($requiredColumns as $column => $sql) {
-        if (!columnExists($pdo, 'discord_weekly_posts', $column)) {
-            $pdo->exec($sql);
-            echo "Added discord_weekly_posts.{$column} column.\n";
-        }
-    }
-}
-
-if (!indexExists($pdo, 'discord_weekly_posts', 'idx_clan_week')) {
-    $pdo->exec('CREATE INDEX idx_clan_week ON discord_weekly_posts (clan_id, week_start_utc)');
-    echo "Created idx_clan_week index.\n";
-}
-
-$clanId = (int) env('CLAN_ID', 0);
-$clanName = (string) env('CLAN_NAME', 'Clan');
-$clanTimezone = (string) env('DEFAULT_TIMEZONE', 'UTC');
-
-if ($clanId > 0) {
-    $stmt = $pdo->prepare('SELECT COUNT(*) FROM clans WHERE id = :id');
-    $stmt->execute(['id' => $clanId]);
-    $exists = (int) $stmt->fetchColumn() > 0;
-
-    if ($exists) {
-        $update = $pdo->prepare('UPDATE clans SET name = :name, timezone = :timezone WHERE id = :id');
-        $update->execute([
-            'id' => $clanId,
-            'name' => $clanName,
-            'timezone' => $clanTimezone,
-        ]);
-        echo "Updated clan record for CLAN_ID={$clanId}.\n";
+    if (!tableExists($pdo, 'clans')) {
+        $pdo->exec(
+            'CREATE TABLE clans (
+                id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                name VARCHAR(150) NOT NULL,
+                timezone VARCHAR(100) NOT NULL DEFAULT "UTC",
+                created_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+        );
+        $log('Created clans table.');
     } else {
-        $insert = $pdo->prepare('INSERT INTO clans (id, name, timezone) VALUES (:id, :name, :timezone)');
-        $insert->execute([
-            'id' => $clanId,
-            'name' => $clanName,
-            'timezone' => $clanTimezone,
-        ]);
-        echo "Inserted clan record for CLAN_ID={$clanId}.\n";
+        if (!columnExists($pdo, 'clans', 'timezone')) {
+            $pdo->exec('ALTER TABLE clans ADD COLUMN timezone VARCHAR(100) NOT NULL DEFAULT "UTC" AFTER name');
+            $log('Added clans.timezone column.');
+        }
+        if (!columnExists($pdo, 'clans', 'created_at_utc')) {
+            $pdo->exec('ALTER TABLE clans ADD COLUMN created_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP');
+            $log('Added clans.created_at_utc column.');
+        }
+        if (!columnExists($pdo, 'clans', 'updated_at_utc')) {
+            $pdo->exec('ALTER TABLE clans ADD COLUMN updated_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP');
+            $log('Added clans.updated_at_utc column.');
+        }
     }
+
+    if (!tableExists($pdo, 'clan_events')) {
+        $pdo->exec(
+            'CREATE TABLE clan_events (
+                id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                clan_id INT UNSIGNED NOT NULL,
+                event_name VARCHAR(255) NOT NULL,
+                event_description TEXT NULL,
+                event_location VARCHAR(255) NULL,
+                host_name VARCHAR(255) NULL,
+                host_discord_user_id VARCHAR(32) NULL,
+                event_start_utc DATETIME NOT NULL,
+                duration_minutes INT UNSIGNED NULL,
+                image_url VARCHAR(1000) NULL,
+                discord_channel_id VARCHAR(32) NULL,
+                status VARCHAR(20) NOT NULL DEFAULT "scheduled",
+                is_active TINYINT(1) NOT NULL DEFAULT 1,
+                is_recurring_weekly TINYINT(1) NOT NULL DEFAULT 0,
+                recurring_until_utc DATETIME NULL,
+                recurring_series_id VARCHAR(64) NULL,
+                discord_daily_channel_id VARCHAR(32) NULL,
+                discord_daily_message_id VARCHAR(32) NULL,
+                discord_daily_posted_at_utc DATETIME NULL,
+                discord_scheduled_event_id VARCHAR(32) NULL,
+                discord_scheduled_event_created_at_utc DATETIME NULL,
+                created_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                CONSTRAINT fk_clan_events_clan FOREIGN KEY (clan_id) REFERENCES clans(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+        );
+        $log('Created clan_events table.');
+    } else {
+        $requiredColumns = [
+            'clan_id' => 'ALTER TABLE clan_events ADD COLUMN clan_id INT UNSIGNED NOT NULL AFTER id',
+            'event_name' => 'ALTER TABLE clan_events ADD COLUMN event_name VARCHAR(255) NOT NULL AFTER clan_id',
+            'event_description' => 'ALTER TABLE clan_events ADD COLUMN event_description TEXT NULL AFTER event_name',
+            'event_location' => 'ALTER TABLE clan_events ADD COLUMN event_location VARCHAR(255) NULL AFTER event_description',
+            'host_name' => 'ALTER TABLE clan_events ADD COLUMN host_name VARCHAR(255) NULL AFTER event_location',
+            'host_discord_user_id' => 'ALTER TABLE clan_events ADD COLUMN host_discord_user_id VARCHAR(32) NULL AFTER host_name',
+            'event_start_utc' => 'ALTER TABLE clan_events ADD COLUMN event_start_utc DATETIME NOT NULL AFTER host_discord_user_id',
+            'duration_minutes' => 'ALTER TABLE clan_events ADD COLUMN duration_minutes INT UNSIGNED NULL AFTER event_start_utc',
+            'image_url' => 'ALTER TABLE clan_events ADD COLUMN image_url VARCHAR(1000) NULL AFTER duration_minutes',
+            'discord_channel_id' => 'ALTER TABLE clan_events ADD COLUMN discord_channel_id VARCHAR(32) NULL AFTER image_url',
+            'status' => 'ALTER TABLE clan_events ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT "scheduled" AFTER discord_channel_id',
+            'is_active' => 'ALTER TABLE clan_events ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1 AFTER status',
+            'is_recurring_weekly' => 'ALTER TABLE clan_events ADD COLUMN is_recurring_weekly TINYINT(1) NOT NULL DEFAULT 0 AFTER is_active',
+            'recurring_until_utc' => 'ALTER TABLE clan_events ADD COLUMN recurring_until_utc DATETIME NULL AFTER is_recurring_weekly',
+            'recurring_series_id' => 'ALTER TABLE clan_events ADD COLUMN recurring_series_id VARCHAR(64) NULL AFTER recurring_until_utc',
+            'discord_daily_channel_id' => 'ALTER TABLE clan_events ADD COLUMN discord_daily_channel_id VARCHAR(32) NULL AFTER recurring_series_id',
+            'discord_daily_message_id' => 'ALTER TABLE clan_events ADD COLUMN discord_daily_message_id VARCHAR(32) NULL AFTER discord_daily_channel_id',
+            'discord_daily_posted_at_utc' => 'ALTER TABLE clan_events ADD COLUMN discord_daily_posted_at_utc DATETIME NULL AFTER discord_daily_message_id',
+            'discord_scheduled_event_id' => 'ALTER TABLE clan_events ADD COLUMN discord_scheduled_event_id VARCHAR(32) NULL AFTER discord_daily_posted_at_utc',
+            'discord_scheduled_event_created_at_utc' => 'ALTER TABLE clan_events ADD COLUMN discord_scheduled_event_created_at_utc DATETIME NULL AFTER discord_scheduled_event_id',
+            'created_at_utc' => 'ALTER TABLE clan_events ADD COLUMN created_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER discord_scheduled_event_created_at_utc',
+            'updated_at_utc' => 'ALTER TABLE clan_events ADD COLUMN updated_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at_utc',
+        ];
+
+        foreach ($requiredColumns as $column => $sql) {
+            if (!columnExists($pdo, 'clan_events', $column)) {
+                $pdo->exec($sql);
+                $log('Added clan_events.' . $column . ' column.');
+            }
+        }
+    }
+
+    if (!indexExists($pdo, 'clan_events', 'idx_clan_start')) {
+        $pdo->exec('CREATE INDEX idx_clan_start ON clan_events (clan_id, event_start_utc)');
+        $log('Created idx_clan_start index.');
+    }
+
+    if (!indexExists($pdo, 'clan_events', 'idx_clan_active_start')) {
+        $pdo->exec('CREATE INDEX idx_clan_active_start ON clan_events (clan_id, is_active, event_start_utc)');
+        $log('Created idx_clan_active_start index.');
+    }
+
+    if (!indexExists($pdo, 'clan_events', 'idx_clan_recurring')) {
+        $pdo->exec('CREATE INDEX idx_clan_recurring ON clan_events (clan_id, is_recurring_weekly, recurring_until_utc)');
+        $log('Created idx_clan_recurring index.');
+    }
+
+    if (!indexExists($pdo, 'clan_events', 'idx_clan_events_series')) {
+        $pdo->exec('CREATE INDEX idx_clan_events_series ON clan_events (clan_id, recurring_series_id, event_start_utc)');
+        $log('Created idx_clan_events_series index.');
+    }
+
+    if (!indexExists($pdo, 'clan_events', 'idx_clan_status_start')) {
+        $pdo->exec('CREATE INDEX idx_clan_status_start ON clan_events (clan_id, status, event_start_utc)');
+        $log('Created idx_clan_status_start index.');
+    }
+
+    // Legacy cleanup requested by user: remove old discord_event_posts entirely.
+    safeDropLegacyTable($pdo, 'discord_event_posts');
+
+    if (!tableExists($pdo, 'discord_weekly_posts')) {
+        $pdo->exec(
+            'CREATE TABLE discord_weekly_posts (
+                id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                clan_id INT UNSIGNED NOT NULL,
+                week_start_utc DATETIME NOT NULL,
+                discord_channel_id VARCHAR(32) NOT NULL,
+                discord_message_id VARCHAR(32) NOT NULL,
+                posted_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at_utc DATETIME NULL,
+                CONSTRAINT fk_discord_weekly_posts_clan FOREIGN KEY (clan_id) REFERENCES clans(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+        );
+        $log('Created discord_weekly_posts table.');
+    } else {
+        $requiredColumns = [
+            'clan_id' => 'ALTER TABLE discord_weekly_posts ADD COLUMN clan_id INT UNSIGNED NOT NULL AFTER id',
+            'week_start_utc' => 'ALTER TABLE discord_weekly_posts ADD COLUMN week_start_utc DATETIME NOT NULL AFTER clan_id',
+            'discord_channel_id' => 'ALTER TABLE discord_weekly_posts ADD COLUMN discord_channel_id VARCHAR(32) NOT NULL AFTER week_start_utc',
+            'discord_message_id' => 'ALTER TABLE discord_weekly_posts ADD COLUMN discord_message_id VARCHAR(32) NOT NULL AFTER discord_channel_id',
+            'posted_at_utc' => 'ALTER TABLE discord_weekly_posts ADD COLUMN posted_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER discord_message_id',
+            'updated_at_utc' => 'ALTER TABLE discord_weekly_posts ADD COLUMN updated_at_utc DATETIME NULL AFTER posted_at_utc',
+        ];
+
+        foreach ($requiredColumns as $column => $sql) {
+            if (!columnExists($pdo, 'discord_weekly_posts', $column)) {
+                $pdo->exec($sql);
+                $log('Added discord_weekly_posts.' . $column . ' column.');
+            }
+        }
+    }
+
+    if (!indexExists($pdo, 'discord_weekly_posts', 'idx_clan_week')) {
+        $pdo->exec('CREATE INDEX idx_clan_week ON discord_weekly_posts (clan_id, week_start_utc)');
+        $log('Created idx_clan_week index.');
+    }
+
+    $clanId = (int) env('CLAN_ID', 0);
+    $clanName = (string) env('CLAN_NAME', 'Clan');
+    $clanTimezone = (string) env('DEFAULT_TIMEZONE', 'UTC');
+
+    if ($clanId > 0) {
+        $stmt = $pdo->prepare('SELECT COUNT(*) FROM clans WHERE id = :id');
+        $stmt->execute(['id' => $clanId]);
+        $exists = (int) $stmt->fetchColumn() > 0;
+
+        if ($exists) {
+            $update = $pdo->prepare('UPDATE clans SET name = :name, timezone = :timezone WHERE id = :id');
+            $update->execute([
+                'id' => $clanId,
+                'name' => $clanName,
+                'timezone' => $clanTimezone,
+            ]);
+            $log('Updated clan record for CLAN_ID=' . $clanId . '.');
+        } else {
+            $insert = $pdo->prepare('INSERT INTO clans (id, name, timezone) VALUES (:id, :name, :timezone)');
+            $insert->execute([
+                'id' => $clanId,
+                'name' => $clanName,
+                'timezone' => $clanTimezone,
+            ]);
+            $log('Inserted clan record for CLAN_ID=' . $clanId . '.');
+        }
+    }
+
+    $log('Bootstrap complete.');
 }
 
-echo "Bootstrap complete.\n";
-
-
-if (!indexExists($pdo, 'clan_events', 'idx_clan_status_start')) {
-    $pdo->exec('CREATE INDEX idx_clan_status_start ON clan_events (clan_id, status, event_start_utc)');
-    echo "Created idx_clan_status_start index.\n";
+if (PHP_SAPI === 'cli' || PHP_SAPI === 'cli-server') {
+    runDatabaseBootstrap(true);
 }
