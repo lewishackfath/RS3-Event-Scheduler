@@ -1,0 +1,5 @@
+Patch applied:
+- Fixed fatal error when recurring_series_id has not been added to the database yet
+- EventRepository now detects whether clan_events.recurring_series_id exists before querying it
+- Public index and app pages will keep working even before bootstrap is run
+- Recurring series management still requires running php setup/db_bootstrap.php to enable the full feature set

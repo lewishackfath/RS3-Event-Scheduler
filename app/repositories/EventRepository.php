@@ -7,110 +7,211 @@ require_once __DIR__ . '/../lib/time.php';
 
 final class EventRepository
 {
+    private ?bool $hasRecurringSeriesId = null;
+
     public function getById(int $id): ?array
     {
-        $stmt = db()->prepare('SELECT * FROM clan_events WHERE id = :id AND clan_id = :clan_id LIMIT 1');
+        $sql = 'SELECT * FROM clan_events WHERE id = :id AND clan_id = :clan_id LIMIT 1';
+        $stmt = db()->prepare($sql);
         $stmt->execute([
             'id' => $id,
             'clan_id' => currentClanId(),
         ]);
 
         $row = $stmt->fetch();
-        return $row ?: null;
+        if (!$row) {
+            return null;
+        }
+
+        if (!$this->hasRecurringSeriesColumn()) {
+            $row['recurring_series_id'] = null;
+        }
+
+        return $row;
     }
 
     public function getForWeek(string $weekStartUtc, string $weekEndUtc): array
     {
-        $stmt = db()->prepare(
-            'SELECT * FROM clan_events
-             WHERE clan_id = :clan_id
-               AND is_active = 1
-               AND (
-                    (event_start_utc >= :week_start_utc_1 AND event_start_utc < :week_end_utc_1)
-                    OR
-                    (is_recurring_weekly = 1 AND recurring_series_id IS NULL AND event_start_utc < :week_end_utc_2 AND (recurring_until_utc IS NULL OR recurring_until_utc >= :week_start_utc_2))
-               )
-             ORDER BY event_start_utc ASC, id ASC'
-        );
+        if ($this->hasRecurringSeriesColumn()) {
+            $stmt = db()->prepare(
+                'SELECT * FROM clan_events
+                 WHERE clan_id = :clan_id
+                   AND is_active = 1
+                   AND (
+                        (event_start_utc >= :week_start_utc_1 AND event_start_utc < :week_end_utc_1)
+                        OR
+                        (is_recurring_weekly = 1 AND recurring_series_id IS NULL AND event_start_utc < :week_end_utc_2 AND (recurring_until_utc IS NULL OR recurring_until_utc >= :week_start_utc_2))
+                   )
+                 ORDER BY event_start_utc ASC, id ASC'
+            );
 
-        $stmt->execute([
-            'clan_id' => currentClanId(),
-            'week_start_utc_1' => $weekStartUtc,
-            'week_end_utc_1' => $weekEndUtc,
-            'week_end_utc_2' => $weekEndUtc,
-            'week_start_utc_2' => $weekStartUtc,
-        ]);
+            $stmt->execute([
+                'clan_id' => currentClanId(),
+                'week_start_utc_1' => $weekStartUtc,
+                'week_end_utc_1' => $weekEndUtc,
+                'week_end_utc_2' => $weekEndUtc,
+                'week_start_utc_2' => $weekStartUtc,
+            ]);
+        } else {
+            $stmt = db()->prepare(
+                'SELECT * FROM clan_events
+                 WHERE clan_id = :clan_id
+                   AND is_active = 1
+                   AND (
+                        (is_recurring_weekly = 0 AND event_start_utc >= :week_start_utc_1 AND event_start_utc < :week_end_utc_1)
+                        OR
+                        (is_recurring_weekly = 1 AND event_start_utc < :week_end_utc_2 AND (recurring_until_utc IS NULL OR recurring_until_utc >= :week_start_utc_2))
+                   )
+                 ORDER BY event_start_utc ASC, id ASC'
+            );
 
-        $rows = $stmt->fetchAll();
+            $stmt->execute([
+                'clan_id' => currentClanId(),
+                'week_start_utc_1' => $weekStartUtc,
+                'week_end_utc_1' => $weekEndUtc,
+                'week_end_utc_2' => $weekEndUtc,
+                'week_start_utc_2' => $weekStartUtc,
+            ]);
+        }
+
+        $rows = $stmt->fetchAll() ?: [];
+        if (!$this->hasRecurringSeriesColumn()) {
+            foreach ($rows as &$row) {
+                $row['recurring_series_id'] = null;
+            }
+            unset($row);
+        }
+
         return $this->expandRecurringForWeek($rows, $weekStartUtc, $weekEndUtc);
     }
 
     public function create(array $data): int
     {
-        $stmt = db()->prepare(
-            'INSERT INTO clan_events (
-                clan_id, event_name, event_description, host_name, host_discord_user_id, event_start_utc,
-                duration_minutes, image_url, discord_channel_id, is_active, is_recurring_weekly, recurring_until_utc, recurring_series_id
-            ) VALUES (
-                :clan_id, :event_name, :event_description, :host_name, :host_discord_user_id, :event_start_utc,
-                :duration_minutes, :image_url, :discord_channel_id, :is_active, :is_recurring_weekly, :recurring_until_utc, :recurring_series_id
-            )'
-        );
+        if ($this->hasRecurringSeriesColumn()) {
+            $stmt = db()->prepare(
+                'INSERT INTO clan_events (
+                    clan_id, event_name, event_description, host_name, host_discord_user_id, event_start_utc,
+                    duration_minutes, image_url, discord_channel_id, is_active, is_recurring_weekly, recurring_until_utc, recurring_series_id
+                ) VALUES (
+                    :clan_id, :event_name, :event_description, :host_name, :host_discord_user_id, :event_start_utc,
+                    :duration_minutes, :image_url, :discord_channel_id, :is_active, :is_recurring_weekly, :recurring_until_utc, :recurring_series_id
+                )'
+            );
 
-        $stmt->execute([
-            'clan_id' => currentClanId(),
-            'event_name' => $data['event_name'],
-            'event_description' => $data['event_description'],
-            'host_name' => $data['host_name'],
-            'host_discord_user_id' => $data['host_discord_user_id'] ?: null,
-            'event_start_utc' => $data['event_start_utc'],
-            'duration_minutes' => $data['duration_minutes'] !== '' ? (int) $data['duration_minutes'] : null,
-            'image_url' => $data['image_url'],
-            'discord_channel_id' => $data['discord_channel_id'],
-            'is_active' => $data['is_active'],
-            'is_recurring_weekly' => $data['is_recurring_weekly'],
-            'recurring_until_utc' => $data['recurring_until_utc'],
-            'recurring_series_id' => $data['recurring_series_id'] ?: null,
-        ]);
+            $stmt->execute([
+                'clan_id' => currentClanId(),
+                'event_name' => $data['event_name'],
+                'event_description' => $data['event_description'],
+                'host_name' => $data['host_name'],
+                'host_discord_user_id' => $data['host_discord_user_id'] ?: null,
+                'event_start_utc' => $data['event_start_utc'],
+                'duration_minutes' => $data['duration_minutes'] !== '' ? (int) $data['duration_minutes'] : null,
+                'image_url' => $data['image_url'],
+                'discord_channel_id' => $data['discord_channel_id'],
+                'is_active' => $data['is_active'],
+                'is_recurring_weekly' => $data['is_recurring_weekly'],
+                'recurring_until_utc' => $data['recurring_until_utc'],
+                'recurring_series_id' => $data['recurring_series_id'] ?: null,
+            ]);
+        } else {
+            $stmt = db()->prepare(
+                'INSERT INTO clan_events (
+                    clan_id, event_name, event_description, host_name, host_discord_user_id, event_start_utc,
+                    duration_minutes, image_url, discord_channel_id, is_active, is_recurring_weekly, recurring_until_utc
+                ) VALUES (
+                    :clan_id, :event_name, :event_description, :host_name, :host_discord_user_id, :event_start_utc,
+                    :duration_minutes, :image_url, :discord_channel_id, :is_active, :is_recurring_weekly, :recurring_until_utc
+                )'
+            );
+
+            $stmt->execute([
+                'clan_id' => currentClanId(),
+                'event_name' => $data['event_name'],
+                'event_description' => $data['event_description'],
+                'host_name' => $data['host_name'],
+                'host_discord_user_id' => $data['host_discord_user_id'] ?: null,
+                'event_start_utc' => $data['event_start_utc'],
+                'duration_minutes' => $data['duration_minutes'] !== '' ? (int) $data['duration_minutes'] : null,
+                'image_url' => $data['image_url'],
+                'discord_channel_id' => $data['discord_channel_id'],
+                'is_active' => $data['is_active'],
+                'is_recurring_weekly' => $data['is_recurring_weekly'],
+                'recurring_until_utc' => $data['recurring_until_utc'],
+            ]);
+        }
 
         return (int) db()->lastInsertId();
     }
 
     public function update(int $id, array $data): void
     {
-        $stmt = db()->prepare(
-            'UPDATE clan_events SET
-                event_name = :event_name,
-                event_description = :event_description,
-                host_name = :host_name,
-                host_discord_user_id = :host_discord_user_id,
-                event_start_utc = :event_start_utc,
-                duration_minutes = :duration_minutes,
-                image_url = :image_url,
-                discord_channel_id = :discord_channel_id,
-                is_active = :is_active,
-                is_recurring_weekly = :is_recurring_weekly,
-                recurring_until_utc = :recurring_until_utc,
-                recurring_series_id = :recurring_series_id
-             WHERE id = :id AND clan_id = :clan_id'
-        );
+        if ($this->hasRecurringSeriesColumn()) {
+            $stmt = db()->prepare(
+                'UPDATE clan_events SET
+                    event_name = :event_name,
+                    event_description = :event_description,
+                    host_name = :host_name,
+                    host_discord_user_id = :host_discord_user_id,
+                    event_start_utc = :event_start_utc,
+                    duration_minutes = :duration_minutes,
+                    image_url = :image_url,
+                    discord_channel_id = :discord_channel_id,
+                    is_active = :is_active,
+                    is_recurring_weekly = :is_recurring_weekly,
+                    recurring_until_utc = :recurring_until_utc,
+                    recurring_series_id = :recurring_series_id
+                 WHERE id = :id AND clan_id = :clan_id'
+            );
 
-        $stmt->execute([
-            'id' => $id,
-            'clan_id' => currentClanId(),
-            'event_name' => $data['event_name'],
-            'event_description' => $data['event_description'],
-            'host_name' => $data['host_name'],
-            'host_discord_user_id' => $data['host_discord_user_id'] ?: null,
-            'event_start_utc' => $data['event_start_utc'],
-            'duration_minutes' => $data['duration_minutes'] !== '' ? (int) $data['duration_minutes'] : null,
-            'image_url' => $data['image_url'],
-            'discord_channel_id' => $data['discord_channel_id'],
-            'is_active' => $data['is_active'],
-            'is_recurring_weekly' => $data['is_recurring_weekly'],
-            'recurring_until_utc' => $data['recurring_until_utc'],
-            'recurring_series_id' => $data['recurring_series_id'] ?: null,
-        ]);
+            $stmt->execute([
+                'id' => $id,
+                'clan_id' => currentClanId(),
+                'event_name' => $data['event_name'],
+                'event_description' => $data['event_description'],
+                'host_name' => $data['host_name'],
+                'host_discord_user_id' => $data['host_discord_user_id'] ?: null,
+                'event_start_utc' => $data['event_start_utc'],
+                'duration_minutes' => $data['duration_minutes'] !== '' ? (int) $data['duration_minutes'] : null,
+                'image_url' => $data['image_url'],
+                'discord_channel_id' => $data['discord_channel_id'],
+                'is_active' => $data['is_active'],
+                'is_recurring_weekly' => $data['is_recurring_weekly'],
+                'recurring_until_utc' => $data['recurring_until_utc'],
+                'recurring_series_id' => $data['recurring_series_id'] ?: null,
+            ]);
+        } else {
+            $stmt = db()->prepare(
+                'UPDATE clan_events SET
+                    event_name = :event_name,
+                    event_description = :event_description,
+                    host_name = :host_name,
+                    host_discord_user_id = :host_discord_user_id,
+                    event_start_utc = :event_start_utc,
+                    duration_minutes = :duration_minutes,
+                    image_url = :image_url,
+                    discord_channel_id = :discord_channel_id,
+                    is_active = :is_active,
+                    is_recurring_weekly = :is_recurring_weekly,
+                    recurring_until_utc = :recurring_until_utc
+                 WHERE id = :id AND clan_id = :clan_id'
+            );
+
+            $stmt->execute([
+                'id' => $id,
+                'clan_id' => currentClanId(),
+                'event_name' => $data['event_name'],
+                'event_description' => $data['event_description'],
+                'host_name' => $data['host_name'],
+                'host_discord_user_id' => $data['host_discord_user_id'] ?: null,
+                'event_start_utc' => $data['event_start_utc'],
+                'duration_minutes' => $data['duration_minutes'] !== '' ? (int) $data['duration_minutes'] : null,
+                'image_url' => $data['image_url'],
+                'discord_channel_id' => $data['discord_channel_id'],
+                'is_active' => $data['is_active'],
+                'is_recurring_weekly' => $data['is_recurring_weekly'],
+                'recurring_until_utc' => $data['recurring_until_utc'],
+            ]);
+        }
     }
 
     public function delete(int $id): void
@@ -124,6 +225,10 @@ final class EventRepository
 
     public function getSeriesEvents(string $seriesId, ?string $fromUtc = null): array
     {
+        if (!$this->hasRecurringSeriesColumn()) {
+            return [];
+        }
+
         $sql = 'SELECT * FROM clan_events WHERE clan_id = :clan_id AND recurring_series_id = :series_id';
         $params = [
             'clan_id' => currentClanId(),
@@ -144,6 +249,10 @@ final class EventRepository
 
     public function deleteSeriesEvents(string $seriesId, ?string $fromUtc = null): int
     {
+        if (!$this->hasRecurringSeriesColumn()) {
+            return 0;
+        }
+
         $sql = 'DELETE FROM clan_events WHERE clan_id = :clan_id AND recurring_series_id = :series_id';
         $params = [
             'clan_id' => currentClanId(),
@@ -174,6 +283,19 @@ final class EventRepository
             'discord_channel_id' => $channelId,
             'discord_message_id' => $messageId,
         ]);
+    }
+
+    private function hasRecurringSeriesColumn(): bool
+    {
+        if ($this->hasRecurringSeriesId !== null) {
+            return $this->hasRecurringSeriesId;
+        }
+
+        $stmt = db()->prepare("SHOW COLUMNS FROM clan_events LIKE 'recurring_series_id'");
+        $stmt->execute();
+        $this->hasRecurringSeriesId = (bool) $stmt->fetch();
+
+        return $this->hasRecurringSeriesId;
     }
 
     private function expandRecurringForWeek(array $rows, string $weekStartUtc, string $weekEndUtc): array
@@ -209,6 +331,7 @@ final class EventRepository
             }
 
             $row['event_start_utc'] = $occurrenceUtc;
+            $row['recurring_series_id'] = null;
             $expanded[] = $row;
         }
 
