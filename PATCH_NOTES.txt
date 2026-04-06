@@ -1,0 +1,5 @@
+Patch applied:
+- Fixed HY093 invalid parameter number in app/repositories/EventRepository.php
+- Preserved the public index page and calendar picker changes
+- Updated recurring week query to use unique PDO placeholder names
+- Tightened non-recurring week boundaries to >= week start and < week end

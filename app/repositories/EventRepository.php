@@ -26,17 +26,19 @@ final class EventRepository
              WHERE clan_id = :clan_id
                AND is_active = 1
                AND (
-                    (is_recurring_weekly = 0 AND event_start_utc BETWEEN :week_start_utc AND :week_end_utc)
+                    (is_recurring_weekly = 0 AND event_start_utc >= :week_start_utc_1 AND event_start_utc < :week_end_utc_1)
                     OR
-                    (is_recurring_weekly = 1 AND event_start_utc <= :week_end_utc AND (recurring_until_utc IS NULL OR recurring_until_utc >= :week_start_utc))
+                    (is_recurring_weekly = 1 AND event_start_utc < :week_end_utc_2 AND (recurring_until_utc IS NULL OR recurring_until_utc >= :week_start_utc_2))
                )
              ORDER BY event_start_utc ASC, id ASC'
         );
 
         $stmt->execute([
             'clan_id' => currentClanId(),
-            'week_start_utc' => $weekStartUtc,
-            'week_end_utc' => $weekEndUtc,
+            'week_start_utc_1' => $weekStartUtc,
+            'week_end_utc_1' => $weekEndUtc,
+            'week_end_utc_2' => $weekEndUtc,
+            'week_start_utc_2' => $weekStartUtc,
         ]);
 
         $rows = $stmt->fetchAll();
