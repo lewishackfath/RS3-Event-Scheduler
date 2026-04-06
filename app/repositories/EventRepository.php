@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../lib/db.php';
 require_once __DIR__ . '/../lib/helpers.php';
+require_once __DIR__ . '/../lib/time.php';
 
 final class EventRepository
 {
@@ -24,7 +25,11 @@ final class EventRepository
             'SELECT * FROM clan_events
              WHERE clan_id = :clan_id
                AND is_active = 1
-               AND event_start_utc BETWEEN :week_start_utc AND :week_end_utc
+               AND (
+                    (is_recurring_weekly = 0 AND event_start_utc BETWEEN :week_start_utc AND :week_end_utc)
+                    OR
+                    (is_recurring_weekly = 1 AND event_start_utc <= :week_end_utc AND (recurring_until_utc IS NULL OR recurring_until_utc >= :week_start_utc))
+               )
              ORDER BY event_start_utc ASC, id ASC'
         );
 
@@ -34,18 +39,19 @@ final class EventRepository
             'week_end_utc' => $weekEndUtc,
         ]);
 
-        return $stmt->fetchAll();
+        $rows = $stmt->fetchAll();
+        return $this->expandRecurringForWeek($rows, $weekStartUtc, $weekEndUtc);
     }
 
     public function create(array $data): int
     {
         $stmt = db()->prepare(
             'INSERT INTO clan_events (
-                clan_id, event_name, event_description, host_name, event_start_utc,
-                duration_minutes, image_url, discord_channel_id, is_active
+                clan_id, event_name, event_description, host_name, host_discord_user_id, event_start_utc,
+                duration_minutes, image_url, discord_channel_id, is_active, is_recurring_weekly, recurring_until_utc
             ) VALUES (
-                :clan_id, :event_name, :event_description, :host_name, :event_start_utc,
-                :duration_minutes, :image_url, :discord_channel_id, :is_active
+                :clan_id, :event_name, :event_description, :host_name, :host_discord_user_id, :event_start_utc,
+                :duration_minutes, :image_url, :discord_channel_id, :is_active, :is_recurring_weekly, :recurring_until_utc
             )'
         );
 
@@ -54,11 +60,14 @@ final class EventRepository
             'event_name' => $data['event_name'],
             'event_description' => $data['event_description'],
             'host_name' => $data['host_name'],
+            'host_discord_user_id' => $data['host_discord_user_id'] ?: null,
             'event_start_utc' => $data['event_start_utc'],
             'duration_minutes' => $data['duration_minutes'] !== '' ? (int) $data['duration_minutes'] : null,
             'image_url' => $data['image_url'],
             'discord_channel_id' => $data['discord_channel_id'],
             'is_active' => $data['is_active'],
+            'is_recurring_weekly' => $data['is_recurring_weekly'],
+            'recurring_until_utc' => $data['recurring_until_utc'],
         ]);
 
         return (int) db()->lastInsertId();
@@ -71,11 +80,14 @@ final class EventRepository
                 event_name = :event_name,
                 event_description = :event_description,
                 host_name = :host_name,
+                host_discord_user_id = :host_discord_user_id,
                 event_start_utc = :event_start_utc,
                 duration_minutes = :duration_minutes,
                 image_url = :image_url,
                 discord_channel_id = :discord_channel_id,
-                is_active = :is_active
+                is_active = :is_active,
+                is_recurring_weekly = :is_recurring_weekly,
+                recurring_until_utc = :recurring_until_utc
              WHERE id = :id AND clan_id = :clan_id'
         );
 
@@ -85,11 +97,14 @@ final class EventRepository
             'event_name' => $data['event_name'],
             'event_description' => $data['event_description'],
             'host_name' => $data['host_name'],
+            'host_discord_user_id' => $data['host_discord_user_id'] ?: null,
             'event_start_utc' => $data['event_start_utc'],
             'duration_minutes' => $data['duration_minutes'] !== '' ? (int) $data['duration_minutes'] : null,
             'image_url' => $data['image_url'],
             'discord_channel_id' => $data['discord_channel_id'],
             'is_active' => $data['is_active'],
+            'is_recurring_weekly' => $data['is_recurring_weekly'],
+            'recurring_until_utc' => $data['recurring_until_utc'],
         ]);
     }
 
@@ -115,5 +130,48 @@ final class EventRepository
             'discord_channel_id' => $channelId,
             'discord_message_id' => $messageId,
         ]);
+    }
+
+    private function expandRecurringForWeek(array $rows, string $weekStartUtc, string $weekEndUtc): array
+    {
+        $weekStartLocal = utcToClanLocal($weekStartUtc);
+        $expanded = [];
+
+        foreach ($rows as $row) {
+            $isRecurring = (int) ($row['is_recurring_weekly'] ?? 0) === 1;
+            if (!$isRecurring) {
+                $expanded[] = $row;
+                continue;
+            }
+
+            $anchorLocal = utcToClanLocal((string) $row['event_start_utc']);
+            $occurrenceLocal = $weekStartLocal
+                ->modify('+' . ($anchorLocal->format('N') - 1) . ' days')
+                ->setTime((int) $anchorLocal->format('H'), (int) $anchorLocal->format('i'), 0);
+            $occurrenceUtc = $occurrenceLocal->setTimezone(utcTimezone())->format('Y-m-d H:i:s');
+
+            if ($occurrenceUtc < $weekStartUtc || $occurrenceUtc > $weekEndUtc) {
+                continue;
+            }
+            if ($occurrenceUtc < (string) $row['event_start_utc']) {
+                continue;
+            }
+            if (!empty($row['recurring_until_utc']) && $occurrenceUtc > (string) $row['recurring_until_utc']) {
+                continue;
+            }
+
+            $row['event_start_utc'] = $occurrenceUtc;
+            $expanded[] = $row;
+        }
+
+        usort($expanded, static function (array $a, array $b): int {
+            $cmp = strcmp((string) $a['event_start_utc'], (string) $b['event_start_utc']);
+            if ($cmp !== 0) {
+                return $cmp;
+            }
+            return ((int) $a['id']) <=> ((int) $b['id']);
+        });
+
+        return $expanded;
     }
 }

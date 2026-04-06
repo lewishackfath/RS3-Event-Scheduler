@@ -9,11 +9,10 @@ require_once dirname(__DIR__) . '/app/lib/event_embeds.php';
 $selectedDate = isset($_GET['date']) ? (string) $_GET['date'] : null;
 $range = weekRangeFromDate($selectedDate);
 $events = (new EventRepository())->getForWeek($range['week_start_utc'], $range['week_end_utc']);
-$results = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
-        $results = (new DiscordPostingService())->postEvents($events);
+        (new DiscordPostingService())->postEvents($events);
         setFlash('success', 'Posting complete.');
         redirect('post_schedule.php?date=' . urlencode($range['week_start_local']->format('Y-m-d')));
     } catch (Throwable $e) {
@@ -40,16 +39,26 @@ renderHeader('Post to Discord');
 <?php else: ?>
     <?php foreach ($events as $event): $embed = buildEventEmbed($event); $local = utcToClanLocal($event['event_start_utc']); ?>
         <div class="card" style="margin-bottom:16px;">
-            <h3 style="margin-top:0;"><?= e($event['event_name']) ?></h3>
-            <div class="muted" style="margin-bottom:10px;">Preview only · <?= e($local->format('l j F Y g:i A')) ?></div>
-            <table>
-                <tr><th>Event Date/Time</th><td><code><?= e($embed['fields'][0]['value']) ?></code></td></tr>
-                <tr><th>Gametime</th><td><?= e($embed['fields'][1]['value']) ?></td></tr>
-                <tr><th>Local Time</th><td><code><?= e($embed['fields'][2]['value']) ?></code></td></tr>
-                <tr><th>Event Host</th><td><?= e($embed['fields'][3]['value']) ?></td></tr>
-                <tr><th>Image</th><td><?= e($embed['image']['url'] ?? 'None') ?></td></tr>
-                <tr><th>Discord Channel</th><td><?= e($event['discord_channel_id'] ?: appConfig()['clan']['default_discord_channel_id']) ?></td></tr>
-            </table>
+            <div class="event-card-row" style="border-bottom:none;padding:0;">
+                <div class="event-card-image-wrap preview-thumb-wrap">
+                    <?php $thumb = eventDisplayImageUrl($event); ?>
+                    <?php if ($thumb !== ''): ?>
+                        <img class="event-card-image" src="<?= e($thumb) ?>" alt="<?= e($event['event_name']) ?>">
+                    <?php else: ?>
+                        <div class="event-card-image placeholder">No image</div>
+                    <?php endif; ?>
+                </div>
+                <div class="event-card-body">
+                    <h3 style="margin-top:0;"><?= e($event['event_name']) ?></h3>
+                    <div class="muted" style="margin-bottom:10px;">Embed preview · <?= e($local->format('l j F Y g:i A')) ?></div>
+                    <div class="event-meta-grid" style="margin-bottom:12px;">
+                        <?php foreach ($embed['fields'] as $field): ?>
+                            <div><strong><?= e($field['name']) ?>:</strong><br><?= nl2br(e($field['value'])) ?></div>
+                        <?php endforeach; ?>
+                    </div>
+                    <div class="muted">Discord embed will show the event image as a side thumbnail.</div>
+                </div>
+            </div>
         </div>
     <?php endforeach; ?>
 <?php endif; ?>

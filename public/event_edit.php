@@ -13,9 +13,15 @@ if (!$event) {
 }
 
 $local = utcToClanLocal($event['event_start_utc']);
+$recurringUntilDate = '';
+if (!empty($event['recurring_until_utc'])) {
+    $recurringUntilDate = utcToClanLocal($event['recurring_until_utc'])->format('Y-m-d');
+}
+
 $formValues = [
     'event_name' => $event['event_name'],
     'host_name' => $event['host_name'],
+    'host_discord_user_id' => $event['host_discord_user_id'] ?? '',
     'event_date' => $local->format('Y-m-d'),
     'event_time' => $local->format('H:i'),
     'duration_minutes' => $event['duration_minutes'],
@@ -23,6 +29,8 @@ $formValues = [
     'image_url' => $event['image_url'],
     'event_description' => $event['event_description'],
     'is_active' => (int) $event['is_active'],
+    'is_recurring_weekly' => (int) ($event['is_recurring_weekly'] ?? 0),
+    'recurring_until_date' => $recurringUntilDate,
 ];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {

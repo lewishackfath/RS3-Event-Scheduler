@@ -18,10 +18,7 @@ function buildEventEmbed(array $event): array
     $brand = branding();
     $timestamp = discordUnixTimestamp($event['event_start_utc']);
     $utc = new DateTimeImmutable($event['event_start_utc'], new DateTimeZone('UTC'));
-
-    $imageUrl = trim((string) ($event['image_url'] ?? '')) !== ''
-        ? $event['image_url']
-        : ($brand['header_image_url'] ?? '');
+    $thumbUrl = eventDisplayImageUrl($event);
 
     $host = trim((string) ($event['host_name'] ?? '')) !== ''
         ? $event['host_name']
@@ -59,12 +56,16 @@ function buildEventEmbed(array $event): array
         'timestamp' => $utc->format(DateTimeInterface::ATOM),
     ];
 
-    if ($imageUrl !== '') {
-        $embed['image'] = ['url' => $imageUrl];
+    if ($thumbUrl !== '') {
+        $embed['thumbnail'] = ['url' => $thumbUrl];
     }
 
     if (($brand['logo_url'] ?? '') !== '') {
-        $embed['thumbnail'] = ['url' => $brand['logo_url']];
+        $embed['author'] = [
+            'name' => currentClanName(),
+            'icon_url' => (string) $brand['logo_url'],
+        ];
+        $embed['footer']['icon_url'] = (string) $brand['logo_url'];
     }
 
     return $embed;

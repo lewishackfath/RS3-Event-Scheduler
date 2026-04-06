@@ -48,3 +48,13 @@ function branding(): array
 {
     return appConfig()['branding'];
 }
+
+function eventDisplayImageUrl(array $event): string
+{
+    $imageUrl = trim((string) ($event['image_url'] ?? ''));
+    if ($imageUrl !== '') {
+        return $imageUrl;
+    }
+
+    return trim((string) (branding()['header_image_url'] ?? ''));
+}

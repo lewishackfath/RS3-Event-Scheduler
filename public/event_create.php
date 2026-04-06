@@ -7,6 +7,7 @@ require_once __DIR__ . '/partials.php';
 $formValues = [
     'event_name' => '',
     'host_name' => '',
+    'host_discord_user_id' => '',
     'event_date' => (string) ($_GET['date'] ?? ''),
     'event_time' => '',
     'duration_minutes' => '',
@@ -14,6 +15,8 @@ $formValues = [
     'image_url' => '',
     'event_description' => '',
     'is_active' => 1,
+    'is_recurring_weekly' => 0,
+    'recurring_until_date' => '',
 ];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
