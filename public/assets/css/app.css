@@ -29,7 +29,7 @@ img{max-width:100%}
 .hero-brand{display:flex;flex-direction:column;gap:10px}
 .hero-title{margin:0;font-size:30px;line-height:1.1;letter-spacing:.2px}
 .hero-subtitle{color:#cbd5e1}
-.hero img.logo{max-height:62px;max-width:62px;border-radius:16px;background:rgba(255,255,255,.96);padding:6px;box-shadow:0 12px 25px rgba(0,0,0,.22)}
+.hero img.logo{max-height:150px;max-width:150px;border-radius:0px;background:rgba(255,255,255,.0);padding:6px;box-shadow:0 12px 25px rgba(0,0,0,.22)}
 .nav{display:flex;gap:10px;flex-wrap:wrap}
 .nav-link{display:inline-flex;align-items:center;justify-content:center;padding:10px 14px;border-radius:999px;background:rgba(15,23,42,.62);color:#dbeafe;border:1px solid rgba(191,219,254,.14);backdrop-filter:blur(10px);transition:all .18s ease}
 .nav-link:hover{transform:translateY(-1px);background:rgba(30,41,59,.88);border-color:rgba(191,219,254,.3)}
