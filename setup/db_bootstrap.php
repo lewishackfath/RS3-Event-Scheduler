@@ -171,6 +171,41 @@ function runDatabaseBootstrap(bool $verbose = false): void
         $log('Created idx_clan_status_start index.');
     }
 
+    if (!tableExists($pdo, 'clan_event_roles')) {
+        $pdo->exec(
+            'CREATE TABLE clan_event_roles (
+                id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                event_id INT UNSIGNED NOT NULL,
+                role_name VARCHAR(100) NOT NULL,
+                reaction_emoji VARCHAR(100) NOT NULL,
+                sort_order INT UNSIGNED NOT NULL DEFAULT 1,
+                created_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_clan_event_roles_event FOREIGN KEY (event_id) REFERENCES clan_events(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+        );
+        $log('Created clan_event_roles table.');
+    } else {
+        $requiredColumns = [
+            'event_id' => 'ALTER TABLE clan_event_roles ADD COLUMN event_id INT UNSIGNED NOT NULL AFTER id',
+            'role_name' => 'ALTER TABLE clan_event_roles ADD COLUMN role_name VARCHAR(100) NOT NULL AFTER event_id',
+            'reaction_emoji' => 'ALTER TABLE clan_event_roles ADD COLUMN reaction_emoji VARCHAR(100) NOT NULL AFTER role_name',
+            'sort_order' => 'ALTER TABLE clan_event_roles ADD COLUMN sort_order INT UNSIGNED NOT NULL DEFAULT 1 AFTER reaction_emoji',
+            'created_at_utc' => 'ALTER TABLE clan_event_roles ADD COLUMN created_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER sort_order',
+        ];
+
+        foreach ($requiredColumns as $column => $sql) {
+            if (!columnExists($pdo, 'clan_event_roles', $column)) {
+                $pdo->exec($sql);
+                $log('Added clan_event_roles.' . $column . ' column.');
+            }
+        }
+    }
+
+    if (!indexExists($pdo, 'clan_event_roles', 'idx_event_role_order')) {
+        $pdo->exec('CREATE INDEX idx_event_role_order ON clan_event_roles (event_id, sort_order)');
+        $log('Created idx_event_role_order index.');
+    }
+
     // Legacy cleanup requested by user: remove old discord_event_posts entirely.
     safeDropLegacyTable($pdo, 'discord_event_posts');
 

@@ -43,6 +43,7 @@ final class EventService
             'duration_minutes' => trim((string) ($input['duration_minutes'] ?? '')),
             'image_url' => trim((string) ($input['image_url'] ?? '')),
             'discord_channel_id' => trim((string) ($input['discord_channel_id'] ?? appConfig()['clan']['default_discord_channel_id'] ?? '')),
+            'preferred_roles' => $this->normalisePreferredRoles(is_array($input['preferred_roles'] ?? null) ? $input['preferred_roles'] : []),
             'is_active' => isset($input['is_active']) ? 1 : 0,
             'is_recurring_weekly' => $isRecurringWeekly,
             'recurring_until_utc' => $isRecurringWeekly === 1
@@ -50,6 +51,34 @@ final class EventService
                 : null,
             'recurring_series_id' => trim((string) ($input['recurring_series_id'] ?? '')),
         ];
+    }
+
+
+    private function normalisePreferredRoles(array $roles): array
+    {
+        $normalised = [];
+
+        foreach ($roles as $role) {
+            if (!is_array($role)) {
+                continue;
+            }
+
+            $roleName = trim((string) ($role['role_name'] ?? ''));
+            $emoji = trim((string) ($role['reaction_emoji'] ?? ''));
+            if ($roleName === '' && $emoji === '') {
+                continue;
+            }
+            if ($roleName === '' || $emoji === '') {
+                throw new InvalidArgumentException('Each preferred role needs both a role name and a reaction emoji.');
+            }
+
+            $normalised[] = [
+                'role_name' => mb_substr($roleName, 0, 100),
+                'reaction_emoji' => mb_substr($emoji, 0, 100),
+            ];
+        }
+
+        return $normalised;
     }
 
     public function createFromForm(EventRepository $repo, array $input): int

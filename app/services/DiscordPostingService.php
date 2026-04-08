@@ -19,32 +19,11 @@ final class DiscordPostingService
         $results = [];
 
         foreach ($events as $event) {
-            $channelId = trim((string) ($event['discord_channel_id'] ?? ''));
-            if ($channelId === '') {
-                $channelId = trim((string) (appConfig()['discord']['daily_event_channel_id'] ?? ''));
-            }
-
-            if ($channelId === '') {
-                $results[] = [
-                    'event_name' => $event['event_name'],
-                    'status' => 'skipped',
-                    'message' => 'No Discord channel configured.',
-                ];
-                continue;
-            }
-
-            $embed = buildEventEmbed($event);
-            $response = postDiscordMessage($channelId, '', [$embed]);
-            $messageId = (string) ($response['id'] ?? '');
-
-            if ($messageId !== '') {
-                $this->events->markDailyPost((int) $event['id'], $channelId, $messageId);
-            }
-
+            $message = $this->postOrUpdateDailyEventMessage($event, 'post_only');
             $results[] = [
-                'event_name' => $event['event_name'],
+                'event_name' => (string) $event['event_name'],
                 'status' => 'posted',
-                'message' => 'Posted successfully.',
+                'message' => $message,
             ];
         }
 
@@ -130,7 +109,6 @@ final class DiscordPostingService
         return $results;
     }
 
-
     public function syncPendingDiscordItemsForToday(?string $date = null): array
     {
         $config = appConfig()['discord'];
@@ -175,31 +153,7 @@ final class DiscordPostingService
             }
 
             if ((bool) $config['enable_daily_event_posts']) {
-                if (!empty($event['discord_daily_message_id'])) {
-                    $eventResults[] = 'Daily event embed already exists';
-                } else {
-                    $channelId = trim((string) ($event['discord_channel_id'] ?? ''));
-                    if ($channelId === '') {
-                        $channelId = trim((string) $config['daily_event_channel_id']);
-                    }
-                    if ($channelId === '') {
-                        $channelId = trim((string) appConfig()['clan']['default_discord_channel_id']);
-                    }
-
-                    if ($channelId === '') {
-                        $eventResults[] = 'Skipped daily post: no channel configured';
-                    } else {
-                        $content = $scheduledEventUrl !== '' ? 'Discord event: ' . $scheduledEventUrl : '';
-                        $response = postDiscordMessage($channelId, $content, [buildEventEmbed($event)]);
-                        $messageId = (string) ($response['id'] ?? '');
-                        if ($messageId !== '') {
-                            $this->events->markDailyPost((int) $event['id'], $channelId, $messageId);
-                            $eventResults[] = 'Posted daily event embed';
-                        } else {
-                            $eventResults[] = 'Daily event embed was not posted';
-                        }
-                    }
-                }
+                $eventResults[] = $this->postOrUpdateDailyEventMessage($event, 'sync', $scheduledEventUrl);
             } else {
                 $eventResults[] = 'Daily event posting disabled';
             }
@@ -254,25 +208,7 @@ final class DiscordPostingService
             }
 
             if ((bool) $config['enable_daily_event_posts']) {
-                $channelId = trim((string) ($event['discord_channel_id'] ?? ''));
-                if ($channelId === '') {
-                    $channelId = trim((string) $config['daily_event_channel_id']);
-                }
-                if ($channelId === '') {
-                    $channelId = trim((string) appConfig()['clan']['default_discord_channel_id']);
-                }
-
-                if ($channelId === '') {
-                    $eventResults[] = 'Skipped daily post: no channel configured';
-                } else {
-                    $content = $scheduledEventUrl !== '' ? 'Discord event: ' . $scheduledEventUrl : '';
-                    $response = postDiscordMessage($channelId, $content, [buildEventEmbed($event)]);
-                    $messageId = (string) ($response['id'] ?? '');
-                    if ($messageId !== '') {
-                        $this->events->markDailyPost((int) $event['id'], $channelId, $messageId);
-                        $eventResults[] = 'Posted daily event embed';
-                    }
-                }
+                $eventResults[] = $this->postOrUpdateDailyEventMessage($event, 'publish', $scheduledEventUrl);
             } else {
                 $eventResults[] = 'Daily event posting disabled';
             }
@@ -286,5 +222,86 @@ final class DiscordPostingService
         }
 
         return $results;
+    }
+
+    private function resolveDailyChannelId(array $event): string
+    {
+        $channelId = trim((string) ($event['discord_channel_id'] ?? ''));
+        if ($channelId === '') {
+            $channelId = trim((string) (appConfig()['discord']['daily_event_channel_id'] ?? ''));
+        }
+        if ($channelId === '') {
+            $channelId = trim((string) (appConfig()['clan']['default_discord_channel_id'] ?? ''));
+        }
+        return $channelId;
+    }
+
+    private function buildDailyMessageContent(string $scheduledEventUrl): string
+    {
+        return $scheduledEventUrl !== '' ? 'Discord event: ' . $scheduledEventUrl : '';
+    }
+
+    private function syncPreferredRoleReactions(string $channelId, string $messageId, array $roles): void
+    {
+        clearDiscordReactions($channelId, $messageId);
+
+        $seen = [];
+        foreach ($roles as $role) {
+            $emoji = trim((string) ($role['reaction_emoji'] ?? ''));
+            if ($emoji === '' || isset($seen[$emoji])) {
+                continue;
+            }
+            $seen[$emoji] = true;
+            addDiscordReaction($channelId, $messageId, $emoji);
+        }
+    }
+
+    private function postOrUpdateDailyEventMessage(array $event, string $mode, string $scheduledEventUrl = ''): string
+    {
+        $channelId = $this->resolveDailyChannelId($event);
+        if ($channelId === '') {
+            return 'Skipped daily post: no channel configured';
+        }
+
+        $content = $this->buildDailyMessageContent($scheduledEventUrl);
+        $embed = buildEventEmbed($event);
+        $existingChannelId = trim((string) ($event['discord_daily_channel_id'] ?? ''));
+        $existingMessageId = trim((string) ($event['discord_daily_message_id'] ?? ''));
+
+        if ($existingMessageId !== '' && $existingChannelId !== '' && $existingChannelId === $channelId) {
+            try {
+                editDiscordMessage($existingChannelId, $existingMessageId, $content, [$embed]);
+                $this->syncPreferredRoleReactions($existingChannelId, $existingMessageId, (array) ($event['preferred_roles'] ?? []));
+                $this->events->markDailyPost((int) $event['id'], $existingChannelId, $existingMessageId);
+                return $mode === 'publish' ? 'Updated existing daily event embed' : 'Updated daily event embed';
+            } catch (Throwable $e) {
+                $message = $e->getMessage();
+                $isUnknownMessage = str_contains($message, 'Unknown Message') || str_contains($message, '10008');
+                if (!$isUnknownMessage) {
+                    throw $e;
+                }
+                $this->events->clearDiscordTracking((int) $event['id']);
+            }
+        }
+
+        if ($existingMessageId !== '' && $existingChannelId !== '' && $existingChannelId !== $channelId) {
+            try {
+                deleteDiscordMessage($existingChannelId, $existingMessageId);
+            } catch (Throwable $e) {
+                // Ignore missing old messages and just recreate in the correct channel.
+            }
+            $this->events->clearDiscordTracking((int) $event['id']);
+        }
+
+        $response = postDiscordMessage($channelId, $content, [$embed]);
+        $messageId = (string) ($response['id'] ?? '');
+        if ($messageId === '') {
+            return 'Daily event embed was not posted';
+        }
+
+        $this->events->markDailyPost((int) $event['id'], $channelId, $messageId);
+        $this->syncPreferredRoleReactions($channelId, $messageId, (array) ($event['preferred_roles'] ?? []));
+
+        return $mode === 'sync' ? 'Posted daily event embed' : 'Posted daily event embed';
     }
 }

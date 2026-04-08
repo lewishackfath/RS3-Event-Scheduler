@@ -13,6 +13,7 @@ $formValues = [
     'event_start_utc_input' => '',
     'duration_minutes' => '',
     'discord_channel_id' => '',
+    'preferred_roles' => [],
     'event_location' => '',
     'image_url' => '',
     'event_description' => '',

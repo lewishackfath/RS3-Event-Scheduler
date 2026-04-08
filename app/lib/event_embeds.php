@@ -13,12 +13,29 @@ function hexColourToInt(string $hex): int
     return hexdec($hex);
 }
 
+function formatPreferredRolesForDisplay(array $roles): string
+{
+    $lines = [];
+
+    foreach ($roles as $role) {
+        $name = trim((string) ($role['role_name'] ?? ''));
+        $emoji = trim((string) ($role['reaction_emoji'] ?? ''));
+        if ($name === '' || $emoji === '') {
+            continue;
+        }
+        $lines[] = $emoji . ' ' . $name;
+    }
+
+    return $lines === [] ? '' : implode("\n", $lines);
+}
+
 function buildEventEmbed(array $event): array
 {
     $brand = branding();
     $timestamp = discordUnixTimestamp($event['event_start_utc']);
     $utc = new DateTimeImmutable($event['event_start_utc'], new DateTimeZone('UTC'));
     $thumbUrl = eventDisplayImageUrl($event);
+    $preferredRolesText = formatPreferredRolesForDisplay((array) ($event['preferred_roles'] ?? []));
 
     $host = trim((string) ($event['host_name'] ?? '')) !== ''
         ? $event['host_name']
@@ -60,6 +77,14 @@ function buildEventEmbed(array $event): array
         ],
         'timestamp' => $utc->format(DateTimeInterface::ATOM),
     ];
+
+    if ($preferredRolesText !== '') {
+        $embed['fields'][] = [
+            'name' => 'Preferred Roles',
+            'value' => $preferredRolesText,
+            'inline' => false,
+        ];
+    }
 
     if ($thumbUrl !== '') {
         $embed['thumbnail'] = ['url' => $thumbUrl];

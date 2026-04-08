@@ -35,7 +35,7 @@ final class EventRepository
             $row['status'] = 'scheduled';
         }
 
-        return $row;
+        return $this->attachRolesToRows([$row])[0] ?? null;
     }
 
     public function getForWeek(string $weekStartUtc, string $weekEndUtc): array
@@ -96,7 +96,7 @@ final class EventRepository
         }
         unset($row);
 
-        return $this->expandRecurringForWeek($rows, $weekStartUtc, $weekEndUtc);
+        return $this->attachRolesToRows($this->expandRecurringForWeek($rows, $weekStartUtc, $weekEndUtc));
     }
 
     public function getForDay(string $dayStartUtc, string $dayEndUtc): array
@@ -130,7 +130,7 @@ final class EventRepository
         }
         unset($row);
 
-        return $rows;
+        return $this->attachRolesToRows($rows);
     }
 
     public function create(array $data): int
@@ -190,7 +190,10 @@ final class EventRepository
             ]);
         }
 
-        return (int) db()->lastInsertId();
+        $eventId = (int) db()->lastInsertId();
+        $this->saveEventRoles($eventId, $data['preferred_roles'] ?? []);
+
+        return $eventId;
     }
 
     public function update(int $id, array $data): void
@@ -266,10 +269,13 @@ final class EventRepository
                 'recurring_until_utc' => $data['recurring_until_utc'],
             ]);
         }
+
+        $this->saveEventRoles($id, $data['preferred_roles'] ?? []);
     }
 
     public function delete(int $id): void
     {
+        $this->deleteEventRoles($id);
         $stmt = db()->prepare('DELETE FROM clan_events WHERE id = :id AND clan_id = :clan_id');
         $stmt->execute([
             'id' => $id,
@@ -350,10 +356,73 @@ final class EventRepository
             $params['from_utc'] = $fromUtc;
         }
 
+        $selectSql = str_replace('DELETE FROM clan_events', 'SELECT id FROM clan_events', $sql);
+        $selectStmt = db()->prepare($selectSql);
+        $selectStmt->execute($params);
+        $eventIds = array_map('intval', array_column($selectStmt->fetchAll() ?: [], 'id'));
+
+        foreach ($eventIds as $eventId) {
+            $this->deleteEventRoles($eventId);
+        }
+
         $stmt = db()->prepare($sql);
         $stmt->execute($params);
 
         return $stmt->rowCount();
+    }
+
+    public function getEventRoles(int $eventId): array
+    {
+        $stmt = db()->prepare(
+            'SELECT role_name, reaction_emoji, sort_order
+             FROM clan_event_roles
+             WHERE event_id = :event_id
+             ORDER BY sort_order ASC, id ASC'
+        );
+        $stmt->execute(['event_id' => $eventId]);
+
+        return array_map(static function (array $row): array {
+            return [
+                'role_name' => trim((string) ($row['role_name'] ?? '')),
+                'reaction_emoji' => trim((string) ($row['reaction_emoji'] ?? '')),
+                'sort_order' => (int) ($row['sort_order'] ?? 0),
+            ];
+        }, $stmt->fetchAll() ?: []);
+    }
+
+    public function saveEventRoles(int $eventId, array $roles): void
+    {
+        $this->deleteEventRoles($eventId);
+
+        if ($roles === []) {
+            return;
+        }
+
+        $stmt = db()->prepare(
+            'INSERT INTO clan_event_roles (event_id, role_name, reaction_emoji, sort_order)
+             VALUES (:event_id, :role_name, :reaction_emoji, :sort_order)'
+        );
+
+        foreach (array_values($roles) as $index => $role) {
+            $roleName = trim((string) ($role['role_name'] ?? ''));
+            $emoji = trim((string) ($role['reaction_emoji'] ?? ''));
+            if ($roleName === '' || $emoji === '') {
+                continue;
+            }
+
+            $stmt->execute([
+                'event_id' => $eventId,
+                'role_name' => $roleName,
+                'reaction_emoji' => $emoji,
+                'sort_order' => $index + 1,
+            ]);
+        }
+    }
+
+    public function deleteEventRoles(int $eventId): void
+    {
+        $stmt = db()->prepare('DELETE FROM clan_event_roles WHERE event_id = :event_id');
+        $stmt->execute(['event_id' => $eventId]);
     }
 
     public function recordDiscordPost(int $eventId, string $channelId, string $messageId): void
@@ -453,6 +522,47 @@ final class EventRepository
         ]);
     }
 
+
+    private function attachRolesToRows(array $rows): array
+    {
+        if ($rows === []) {
+            return $rows;
+        }
+
+        $eventIds = array_values(array_unique(array_map(static fn (array $row): int => (int) ($row['id'] ?? 0), $rows)));
+        $eventIds = array_values(array_filter($eventIds, static fn (int $id): bool => $id > 0));
+        if ($eventIds === []) {
+            foreach ($rows as &$row) {
+                $row['preferred_roles'] = [];
+            }
+            unset($row);
+            return $rows;
+        }
+
+        $placeholders = implode(',', array_fill(0, count($eventIds), '?'));
+        $stmt = db()->prepare('SELECT event_id, role_name, reaction_emoji, sort_order FROM clan_event_roles WHERE event_id IN (' . $placeholders . ') ORDER BY event_id ASC, sort_order ASC, id ASC');
+        $stmt->execute($eventIds);
+
+        $rolesByEventId = [];
+        foreach (($stmt->fetchAll() ?: []) as $roleRow) {
+            $eventId = (int) ($roleRow['event_id'] ?? 0);
+            if ($eventId <= 0) {
+                continue;
+            }
+            $rolesByEventId[$eventId][] = [
+                'role_name' => trim((string) ($roleRow['role_name'] ?? '')),
+                'reaction_emoji' => trim((string) ($roleRow['reaction_emoji'] ?? '')),
+                'sort_order' => (int) ($roleRow['sort_order'] ?? 0),
+            ];
+        }
+
+        foreach ($rows as &$row) {
+            $row['preferred_roles'] = $rolesByEventId[(int) ($row['id'] ?? 0)] ?? [];
+        }
+        unset($row);
+
+        return $rows;
+    }
 
     private function hasRecurringSeriesColumn(): bool
     {

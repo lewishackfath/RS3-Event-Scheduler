@@ -9,6 +9,7 @@ $selectedHostName = (string) ($formValues['host_name'] ?? '');
 $selectedHostId = (string) ($formValues['host_discord_user_id'] ?? '');
 $selectedChannelId = (string) ($formValues['discord_channel_id'] ?? '');
 $utcStartInput = (string) ($formValues['event_start_utc_input'] ?? '');
+$preferredRoles = is_array($formValues['preferred_roles'] ?? null) ? $formValues['preferred_roles'] : [];
 $currentPage = basename((string) ($_SERVER['PHP_SELF'] ?? ''));
 $isEditPage = $currentPage === 'event_edit.php';
 $isSeriesEvent = $isEditPage && isset($event) && trim((string) ($event['recurring_series_id'] ?? '')) !== '';
@@ -88,6 +89,45 @@ $isSeriesEvent = $isEditPage && isset($event) && trim((string) ($event['recurrin
             <label for="event_description">Notes / Description</label>
             <textarea id="event_description" name="event_description" rows="5"><?= e($formValues['event_description'] ?? '') ?></textarea>
         </div>
+
+        <div class="field field-full">
+            <label>Preferred Roles / Reactions</label>
+            <div id="preferred-roles-list">
+                <?php foreach ($preferredRoles as $index => $preferredRole): ?>
+                    <div class="preferred-role-row" data-role-row style="display:grid;grid-template-columns:minmax(180px,2fr) minmax(100px,1fr) auto;gap:12px;align-items:end;margin-bottom:12px;">
+                        <div>
+                            <label for="preferred_role_name_<?= (int) $index ?>">Role Name</label>
+                            <input type="text" id="preferred_role_name_<?= (int) $index ?>" name="preferred_roles[<?= (int) $index ?>][role_name]" value="<?= e((string) ($preferredRole['role_name'] ?? '')) ?>" placeholder="e.g. Base/Tank">
+                        </div>
+                        <div>
+                            <label for="preferred_role_emoji_<?= (int) $index ?>">Reaction Emoji</label>
+                            <input type="text" id="preferred_role_emoji_<?= (int) $index ?>" name="preferred_roles[<?= (int) $index ?>][reaction_emoji]" value="<?= e((string) ($preferredRole['reaction_emoji'] ?? '')) ?>" placeholder="e.g. 🛡️">
+                        </div>
+                        <div>
+                            <button class="btn secondary" type="button" data-remove-role>Remove</button>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+            <button class="btn secondary" type="button" id="add-preferred-role">Add Role Option</button>
+            <div class="muted" style="margin-top:6px;">These options will be shown on the daily Discord event post, and the matching reactions will be added to the message for members to choose from.</div>
+            <template id="preferred-role-template">
+                <div class="preferred-role-row" data-role-row style="display:grid;grid-template-columns:minmax(180px,2fr) minmax(100px,1fr) auto;gap:12px;align-items:end;margin-bottom:12px;">
+                    <div>
+                        <label>Role Name</label>
+                        <input type="text" data-role-name placeholder="e.g. Woodcutting">
+                    </div>
+                    <div>
+                        <label>Reaction Emoji</label>
+                        <input type="text" data-role-emoji placeholder="e.g. 🪓">
+                    </div>
+                    <div>
+                        <button class="btn secondary" type="button" data-remove-role>Remove</button>
+                    </div>
+                </div>
+            </template>
+        </div>
+
         <div class="field">
             <label><input type="checkbox" name="is_active" value="1" <?= !empty($formValues['is_active']) ? 'checked' : '' ?>> Active</label>
         </div>
@@ -109,6 +149,9 @@ $isSeriesEvent = $isEditPage && isset($event) && trim((string) ($event['recurrin
     const eventDateInput = document.getElementById('event_date');
     const eventTimeInput = document.getElementById('event_time');
     const utcStartInput = document.getElementById('event_start_utc_input');
+    const preferredRolesList = document.getElementById('preferred-roles-list');
+    const preferredRoleTemplate = document.getElementById('preferred-role-template');
+    const addPreferredRoleButton = document.getElementById('add-preferred-role');
     const clanTimezone = <?= json_encode(appConfig()['clan']['timezone']) ?>;
     let controller = null;
     let isSyncingTimeFields = false;
@@ -219,6 +262,61 @@ $isSeriesEvent = $isEditPage && isset($event) && trim((string) ($event['recurrin
         } finally {
             isSyncingTimeFields = false;
         }
+    }
+
+
+    function reindexPreferredRoleRows() {
+        if (!preferredRolesList) return;
+        Array.prototype.forEach.call(preferredRolesList.querySelectorAll('[data-role-row]'), function (row, index) {
+            const roleInput = row.querySelector('[data-role-name], input[name*="[role_name]"]');
+            const emojiInput = row.querySelector('[data-role-emoji], input[name*="[reaction_emoji]"]');
+            const roleLabel = row.querySelector('label');
+            const emojiLabel = row.querySelectorAll('label')[1];
+            const roleId = 'preferred_role_name_' + index;
+            const emojiId = 'preferred_role_emoji_' + index;
+            if (roleInput) {
+                roleInput.name = 'preferred_roles[' + index + '][role_name]';
+                roleInput.id = roleId;
+            }
+            if (emojiInput) {
+                emojiInput.name = 'preferred_roles[' + index + '][reaction_emoji]';
+                emojiInput.id = emojiId;
+            }
+            if (roleLabel) roleLabel.setAttribute('for', roleId);
+            if (emojiLabel) emojiLabel.setAttribute('for', emojiId);
+        });
+    }
+
+    function addPreferredRoleRow(roleName, emoji) {
+        if (!preferredRolesList || !preferredRoleTemplate) return;
+        const fragment = preferredRoleTemplate.content.cloneNode(true);
+        const row = fragment.querySelector('[data-role-row]');
+        const roleInput = fragment.querySelector('[data-role-name]');
+        const emojiInput = fragment.querySelector('[data-role-emoji]');
+        if (roleInput) roleInput.value = roleName || '';
+        if (emojiInput) emojiInput.value = emoji || '';
+        preferredRolesList.appendChild(fragment);
+        reindexPreferredRoleRows();
+        if (row && roleInput && !roleName) roleInput.focus();
+    }
+
+    if (preferredRolesList) {
+        preferredRolesList.addEventListener('click', function (event) {
+            const button = event.target.closest('[data-remove-role]');
+            if (!button) return;
+            const row = button.closest('[data-role-row]');
+            if (row) {
+                row.remove();
+                reindexPreferredRoleRows();
+            }
+        });
+        reindexPreferredRoleRows();
+    }
+
+    if (addPreferredRoleButton) {
+        addPreferredRoleButton.addEventListener('click', function () {
+            addPreferredRoleRow('', '');
+        });
     }
 
     function hideResults() {

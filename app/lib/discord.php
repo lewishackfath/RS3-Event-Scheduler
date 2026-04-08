@@ -77,6 +77,42 @@ function editDiscordMessage(string $channelId, string $messageId, string $conten
     ]);
 }
 
+
+function encodeDiscordEmojiForUrl(string $emoji): string
+{
+    $emoji = trim($emoji);
+    if ($emoji === '') {
+        return '';
+    }
+
+    if (preg_match('/^<?a?:[A-Za-z0-9_~]+:(\d+)>?$/', $emoji, $matches)) {
+        $name = preg_replace('/^<?a?:([^:]+):(\d+)>?$/', '$1', $emoji);
+        return rawurlencode($name . ':' . $matches[1]);
+    }
+
+    return rawurlencode($emoji);
+}
+
+function addDiscordReaction(string $channelId, string $messageId, string $emoji): void
+{
+    $encodedEmoji = encodeDiscordEmojiForUrl($emoji);
+    if ($encodedEmoji === '') {
+        return;
+    }
+
+    discordApiRequest('PUT', '/channels/' . rawurlencode($channelId) . '/messages/' . rawurlencode($messageId) . '/reactions/' . $encodedEmoji . '/@me');
+}
+
+function clearDiscordReactions(string $channelId, string $messageId): void
+{
+    discordApiRequest('DELETE', '/channels/' . rawurlencode($channelId) . '/messages/' . rawurlencode($messageId) . '/reactions');
+}
+
+function deleteDiscordMessage(string $channelId, string $messageId): void
+{
+    discordApiRequest('DELETE', '/channels/' . rawurlencode($channelId) . '/messages/' . rawurlencode($messageId));
+}
+
 function fetchGuildChannels(string $guildId): array
 {
     $channels = discordApiRequest('GET', '/guilds/' . rawurlencode($guildId) . '/channels');
