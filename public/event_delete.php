@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/bootstrap.php';
 require_once __DIR__ . '/partials.php';
+require_once __DIR__ . '/../app/services/DiscordPostingService.php';
 
 $id = isset($_GET['id']) ? (int) $_GET['id'] : (int) ($_POST['id'] ?? 0);
 $repo = new EventRepository();
@@ -17,14 +18,30 @@ $seriesId = trim((string) ($event['recurring_series_id'] ?? ''));
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $scope = (string) ($_POST['delete_scope'] ?? 'single');
+    $discord = new DiscordPostingService();
+    $discordMessages = [];
+
+    if ($seriesId !== '' && $scope === 'future') {
+        $discordMessages = $discord->deleteEventArtifactsForSeries($seriesId, (string) $event['event_start_utc']);
+    } elseif ($seriesId !== '' && $scope === 'all') {
+        $discordMessages = $discord->deleteEventArtifactsForSeries($seriesId, null);
+    } else {
+        $discordMessages = $discord->deleteEventArtifactsById((int) $event['id']);
+    }
+
     $deletedCount = (new EventService())->deleteEvent($repo, $event, $scope);
 
     if ($seriesId !== '' && $scope !== 'single') {
-        setFlash('success', 'Deleted ' . $deletedCount . ' events from the recurring series.');
+        $message = 'Deleted ' . $deletedCount . ' events from the recurring series.';
     } else {
-        setFlash('success', 'Event deleted successfully.');
+        $message = 'Event deleted successfully.';
     }
 
+    if ($discordMessages !== []) {
+        $message .= ' ' . implode(' | ', $discordMessages);
+    }
+
+    setFlash('success', trim($message));
     redirect('index.php');
 }
 
