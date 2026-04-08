@@ -32,6 +32,203 @@ final class DiscordPostingService
 
     public function postWeeklySummaryForWeek(?string $date = null): array
     {
+        return $this->postOrUpdateWeeklySummaryForWeek($date, true);
+    }
+
+    public function refreshWeeklySummariesForDates(array $localDates): array
+    {
+        $results = [];
+        $seen = [];
+
+        foreach ($localDates as $date) {
+            $date = trim((string) $date);
+            if ($date === '') {
+                continue;
+            }
+
+            $range = weekRangeFromDate($date);
+            $weekKey = (string) $range['week_start_utc'];
+            if (isset($seen[$weekKey])) {
+                continue;
+            }
+
+            $seen[$weekKey] = true;
+            $results = array_merge($results, $this->postOrUpdateWeeklySummaryForWeek($date, false));
+        }
+
+        return $results;
+    }
+
+    public function syncPendingDiscordItemsForToday(?string $date = null): array
+    {
+        $config = appConfig()['discord'];
+        $range = dayRangeFromDate($date);
+        $events = $this->events->getForDay($range['day_start_utc'], $range['day_end_utc']);
+        $results = $this->cleanupExpiredDailyPosts();
+
+        if ($events === []) {
+            $results[] = [
+                'scope' => 'day_of_events',
+                'status' => 'skipped',
+                'message' => 'No events found for ' . $range['day_start_local']->format('j M Y') . '.',
+            ];
+
+            return array_merge($results, $this->refreshWeeklySummariesForDates([$range['day_start_local']->format('Y-m-d')]));
+        }
+
+        foreach ($events as $event) {
+            $eventResults = [];
+            $scheduledEventUrl = '';
+
+            if ((bool) $config['enable_scheduled_events']) {
+                [$scheduledEventUrl, $scheduledMessage] = $this->syncScheduledEvent($event);
+                $eventResults[] = $scheduledMessage;
+            } else {
+                $eventResults[] = 'Scheduled event creation disabled';
+            }
+
+            if ((bool) $config['enable_daily_event_posts']) {
+                $eventResults[] = $this->postOrUpdateDailyEventMessage($event, 'sync', $scheduledEventUrl);
+            } else {
+                $eventResults[] = 'Daily event posting disabled';
+            }
+
+            $results[] = [
+                'scope' => 'day_of_events',
+                'event_name' => (string) $event['event_name'],
+                'status' => 'processed',
+                'message' => implode(' · ', $eventResults),
+            ];
+        }
+
+        return array_merge($results, $this->refreshWeeklySummariesForDates([$range['day_start_local']->format('Y-m-d')]));
+    }
+
+    public function publishDayOfEvents(?string $date = null): array
+    {
+        $config = appConfig()['discord'];
+        $range = dayRangeFromDate($date);
+        $events = $this->events->getForDay($range['day_start_utc'], $range['day_end_utc']);
+        $results = $this->cleanupExpiredDailyPosts();
+
+        if ($events === []) {
+            $results[] = [
+                'scope' => 'day_of_events',
+                'status' => 'skipped',
+                'message' => 'No events found for ' . $range['day_start_local']->format('j M Y') . '.',
+            ];
+            return $results;
+        }
+
+        foreach ($events as $event) {
+            $eventResults = [];
+            $scheduledEventUrl = '';
+
+            if ((bool) $config['enable_scheduled_events']) {
+                [$scheduledEventUrl, $scheduledMessage] = $this->syncScheduledEvent($event);
+                $eventResults[] = $scheduledMessage;
+            } else {
+                $eventResults[] = 'Scheduled event creation disabled';
+            }
+
+            if ((bool) $config['enable_daily_event_posts']) {
+                $eventResults[] = $this->postOrUpdateDailyEventMessage($event, 'publish', $scheduledEventUrl);
+            } else {
+                $eventResults[] = 'Daily event posting disabled';
+            }
+
+            $results[] = [
+                'scope' => 'day_of_events',
+                'event_name' => (string) $event['event_name'],
+                'status' => 'processed',
+                'message' => implode(' · ', $eventResults),
+            ];
+        }
+
+        return $results;
+    }
+
+
+    public function syncEventById(int $eventId): array
+    {
+        $event = $this->events->getById($eventId);
+        if ($event === null) {
+            return [[
+                'scope' => 'day_of_events',
+                'status' => 'skipped',
+                'message' => 'Event not found for Discord sync.',
+            ]];
+        }
+
+        $config = appConfig()['discord'];
+        $eventResults = [];
+        $scheduledEventUrl = '';
+
+        if ((bool) $config['enable_scheduled_events']) {
+            [$scheduledEventUrl, $scheduledMessage] = $this->syncScheduledEvent($event);
+            $eventResults[] = $scheduledMessage;
+        } else {
+            $eventResults[] = 'Scheduled event creation disabled';
+        }
+
+        if ((bool) $config['enable_daily_event_posts']) {
+            $eventResults[] = $this->postOrUpdateDailyEventMessage($event, 'sync', $scheduledEventUrl);
+        } else {
+            $eventResults[] = 'Daily event posting disabled';
+        }
+
+        return [[
+            'scope' => 'day_of_events',
+            'event_name' => (string) $event['event_name'],
+            'status' => 'processed',
+            'message' => implode(' · ', $eventResults),
+        ]];
+    }
+
+    public function deleteDiscordArtifactsForEvent(array $event): array
+    {
+        $results = [];
+        $existingChannelId = trim((string) ($event['discord_daily_channel_id'] ?? ''));
+        $existingMessageId = trim((string) ($event['discord_daily_message_id'] ?? ''));
+
+        if ($existingChannelId !== '' && $existingMessageId !== '') {
+            try {
+                deleteDiscordMessage($existingChannelId, $existingMessageId);
+                $results[] = 'Deleted daily event post';
+            } catch (Throwable $e) {
+                if (!$this->isUnknownDiscordResourceError($e)) {
+                    throw $e;
+                }
+                $results[] = 'Daily event post was already missing';
+            }
+        }
+
+        if (!empty($event['id'])) {
+            $this->events->clearDailyPostTracking((int) $event['id']);
+        }
+
+        $scheduledEventId = trim((string) ($event['discord_scheduled_event_id'] ?? ''));
+        if ($scheduledEventId !== '') {
+            try {
+                deleteExternalScheduledEvent($scheduledEventId);
+                $results[] = 'Deleted native Discord event';
+            } catch (Throwable $e) {
+                if (!$this->isUnknownDiscordResourceError($e)) {
+                    throw $e;
+                }
+                $results[] = 'Native Discord event was already missing';
+            }
+        }
+
+        if (!empty($event['id'])) {
+            $this->events->clearScheduledEventTracking((int) $event['id']);
+        }
+
+        return $results;
+    }
+
+    private function postOrUpdateWeeklySummaryForWeek(?string $date, bool $createIfMissing): array
+    {
         $config = appConfig()['discord'];
         if (!(bool) $config['enable_weekly_summary']) {
             return [[
@@ -62,14 +259,21 @@ final class DiscordPostingService
                     'message' => 'Updated existing weekly summary message.',
                 ]];
             } catch (Throwable $e) {
-                $message = $e->getMessage();
-                $isUnknownMessage = str_contains($message, 'Unknown Message') || str_contains($message, '10008');
-                if (!$isUnknownMessage) {
+                if (!$this->isUnknownDiscordResourceError($e)) {
                     throw $e;
                 }
 
                 $this->events->deleteWeeklyPost($range['week_start_utc']);
+                $existing = null;
             }
+        }
+
+        if (!$createIfMissing) {
+            return [[
+                'scope' => 'weekly_summary',
+                'status' => 'skipped',
+                'message' => 'Skipped weekly summary refresh for week of ' . $range['week_start_local']->format('j M Y') . ' because no summary post exists yet.',
+            ]];
         }
 
         $response = postDiscordMessage($channelId, '', [$embed]);
@@ -85,143 +289,107 @@ final class DiscordPostingService
         ]];
     }
 
-    public function refreshWeeklySummariesForDates(array $localDates): array
+    private function syncScheduledEvent(array $event): array
+    {
+        $scheduledEventId = trim((string) ($event['discord_scheduled_event_id'] ?? ''));
+        $scheduledEventUrl = '';
+        $eventStartUtc = new DateTimeImmutable((string) $event['event_start_utc'], utcTimezone());
+        $nowUtc = new DateTimeImmutable('now', utcTimezone());
+        $canExist = $eventStartUtc > $nowUtc && (string) ($event['status'] ?? 'scheduled') !== 'cancelled';
+
+        if ($scheduledEventId !== '' && !$canExist) {
+            try {
+                deleteExternalScheduledEvent($scheduledEventId);
+            } catch (Throwable $e) {
+                if (!$this->isUnknownDiscordResourceError($e)) {
+                    throw $e;
+                }
+            }
+            $this->events->clearScheduledEventTracking((int) $event['id']);
+
+            return ['', 'Removed native Discord event'];
+        }
+
+        if (!$canExist) {
+            return ['', 'Skipped native Discord event: event start time is already in the past'];
+        }
+
+        if ($scheduledEventId !== '') {
+            try {
+                editExternalScheduledEvent($scheduledEventId, $event);
+                $scheduledEventUrl = buildDiscordScheduledEventUrl($scheduledEventId);
+                $this->events->markScheduledEvent((int) $event['id'], $scheduledEventId);
+                return [$scheduledEventUrl, 'Updated native Discord event'];
+            } catch (Throwable $e) {
+                if (!$this->isUnknownDiscordResourceError($e)) {
+                    throw $e;
+                }
+                $this->events->clearScheduledEventTracking((int) $event['id']);
+            }
+        }
+
+        $scheduled = createExternalScheduledEvent($event);
+        $newScheduledEventId = (string) ($scheduled['id'] ?? '');
+        if ($newScheduledEventId === '') {
+            return ['', 'Native Discord event was not created'];
+        }
+
+        $this->events->markScheduledEvent((int) $event['id'], $newScheduledEventId);
+        $scheduledEventUrl = buildDiscordScheduledEventUrl($newScheduledEventId);
+
+        return [$scheduledEventUrl, 'Created native Discord event'];
+    }
+
+    private function cleanupExpiredDailyPosts(): array
     {
         $results = [];
-        $seen = [];
 
-        foreach ($localDates as $date) {
-            $date = trim((string) $date);
-            if ($date === '') {
+        foreach ($this->events->getEventsWithDailyPosts() as $event) {
+            if (!$this->hasEventEnded($event)) {
                 continue;
             }
 
-            $range = weekRangeFromDate($date);
-            $weekKey = (string) $range['week_start_utc'];
-            if (isset($seen[$weekKey])) {
-                continue;
+            $existingChannelId = trim((string) ($event['discord_daily_channel_id'] ?? ''));
+            $existingMessageId = trim((string) ($event['discord_daily_message_id'] ?? ''));
+            if ($existingChannelId !== '' && $existingMessageId !== '') {
+                try {
+                    deleteDiscordMessage($existingChannelId, $existingMessageId);
+                    $results[] = [
+                        'scope' => 'day_of_events',
+                        'event_name' => (string) ($event['event_name'] ?? 'Event'),
+                        'status' => 'cleaned_up',
+                        'message' => 'Deleted expired daily event post.',
+                    ];
+                } catch (Throwable $e) {
+                    if (!$this->isUnknownDiscordResourceError($e)) {
+                        throw $e;
+                    }
+                    $results[] = [
+                        'scope' => 'day_of_events',
+                        'event_name' => (string) ($event['event_name'] ?? 'Event'),
+                        'status' => 'cleaned_up',
+                        'message' => 'Expired daily event post was already missing.',
+                    ];
+                }
             }
 
-            $seen[$weekKey] = true;
-            $results = array_merge($results, $this->postWeeklySummaryForWeek($date));
+            $this->events->clearDailyPostTracking((int) $event['id']);
         }
 
         return $results;
     }
 
-    public function syncPendingDiscordItemsForToday(?string $date = null): array
+    private function hasEventEnded(array $event): bool
     {
-        $config = appConfig()['discord'];
-        $range = dayRangeFromDate($date);
-        $events = $this->events->getForDay($range['day_start_utc'], $range['day_end_utc']);
-        $results = [];
-
-        if ($events === []) {
-            return [[
-                'scope' => 'day_of_events',
-                'status' => 'skipped',
-                'message' => 'No events found for ' . $range['day_start_local']->format('j M Y') . '.',
-            ]];
+        $durationMinutes = (int) ($event['duration_minutes'] ?? 0);
+        if ($durationMinutes <= 0) {
+            $durationMinutes = max(1, (int) appConfig()['discord']['default_event_duration_minutes']);
         }
 
-        foreach ($events as $event) {
-            $eventResults = [];
-            $scheduledEventUrl = '';
-            $eventStartUtc = new DateTimeImmutable((string) $event['event_start_utc'], utcTimezone());
-            $nowUtc = new DateTimeImmutable('now', utcTimezone());
-            $canCreateScheduledEvent = $eventStartUtc > $nowUtc;
+        $endUtc = (new DateTimeImmutable((string) $event['event_start_utc'], utcTimezone()))
+            ->modify('+' . $durationMinutes . ' minutes');
 
-            if ((bool) $config['enable_scheduled_events']) {
-                if (!empty($event['discord_scheduled_event_id'])) {
-                    $scheduledEventUrl = buildDiscordScheduledEventUrl((string) $event['discord_scheduled_event_id']);
-                    $eventResults[] = 'Native Discord event already exists';
-                } elseif (!$canCreateScheduledEvent) {
-                    $eventResults[] = 'Skipped native Discord event: event start time is already in the past';
-                } else {
-                    $scheduled = createExternalScheduledEvent($event);
-                    $scheduledEventId = (string) ($scheduled['id'] ?? '');
-                    if ($scheduledEventId !== '') {
-                        $this->events->markScheduledEvent((int) $event['id'], $scheduledEventId);
-                        $scheduledEventUrl = buildDiscordScheduledEventUrl($scheduledEventId);
-                        $eventResults[] = 'Created native Discord event';
-                    } else {
-                        $eventResults[] = 'Native Discord event was not created';
-                    }
-                }
-            } else {
-                $eventResults[] = 'Scheduled event creation disabled';
-            }
-
-            if ((bool) $config['enable_daily_event_posts']) {
-                $eventResults[] = $this->postOrUpdateDailyEventMessage($event, 'sync', $scheduledEventUrl);
-            } else {
-                $eventResults[] = 'Daily event posting disabled';
-            }
-
-            $results[] = [
-                'scope' => 'day_of_events',
-                'event_name' => (string) $event['event_name'],
-                'status' => 'processed',
-                'message' => implode(' · ', $eventResults),
-            ];
-        }
-
-        $results = array_merge($results, $this->refreshWeeklySummariesForDates([$range['day_start_local']->format('Y-m-d')]));
-
-        return $results;
-    }
-
-    public function publishDayOfEvents(?string $date = null): array
-    {
-        $config = appConfig()['discord'];
-        $range = dayRangeFromDate($date);
-        $events = $this->events->getForDay($range['day_start_utc'], $range['day_end_utc']);
-        $results = [];
-
-        if ($events === []) {
-            return [[
-                'scope' => 'day_of_events',
-                'status' => 'skipped',
-                'message' => 'No events found for ' . $range['day_start_local']->format('j M Y') . '.',
-            ]];
-        }
-
-        foreach ($events as $event) {
-            $eventResults = [];
-            $scheduledEventUrl = '';
-
-            if ((bool) $config['enable_scheduled_events']) {
-                if (!empty($event['discord_scheduled_event_id'])) {
-                    $scheduledEventUrl = buildDiscordScheduledEventUrl((string) $event['discord_scheduled_event_id']);
-                    $eventResults[] = 'Native Discord event already exists';
-                } else {
-                    $scheduled = createExternalScheduledEvent($event);
-                    $scheduledEventId = (string) ($scheduled['id'] ?? '');
-                    if ($scheduledEventId !== '') {
-                        $this->events->markScheduledEvent((int) $event['id'], $scheduledEventId);
-                        $scheduledEventUrl = buildDiscordScheduledEventUrl($scheduledEventId);
-                        $eventResults[] = 'Created native Discord event';
-                    }
-                }
-            } else {
-                $eventResults[] = 'Scheduled event creation disabled';
-            }
-
-            if ((bool) $config['enable_daily_event_posts']) {
-                $eventResults[] = $this->postOrUpdateDailyEventMessage($event, 'publish', $scheduledEventUrl);
-            } else {
-                $eventResults[] = 'Daily event posting disabled';
-            }
-
-            $results[] = [
-                'scope' => 'day_of_events',
-                'event_name' => (string) $event['event_name'],
-                'status' => 'processed',
-                'message' => implode(' · ', $eventResults),
-            ];
-        }
-
-        return $results;
+        return $endUtc <= new DateTimeImmutable('now', utcTimezone());
     }
 
     private function resolveDailyChannelId(array $event): string
@@ -258,6 +426,23 @@ final class DiscordPostingService
 
     private function postOrUpdateDailyEventMessage(array $event, string $mode, string $scheduledEventUrl = ''): string
     {
+        $existingChannelId = trim((string) ($event['discord_daily_channel_id'] ?? ''));
+        $existingMessageId = trim((string) ($event['discord_daily_message_id'] ?? ''));
+
+        if ($this->hasEventEnded($event) || (string) ($event['status'] ?? 'scheduled') === 'cancelled') {
+            if ($existingChannelId !== '' && $existingMessageId !== '') {
+                try {
+                    deleteDiscordMessage($existingChannelId, $existingMessageId);
+                } catch (Throwable $e) {
+                    if (!$this->isUnknownDiscordResourceError($e)) {
+                        throw $e;
+                    }
+                }
+            }
+            $this->events->clearDailyPostTracking((int) $event['id']);
+            return 'Removed daily event embed';
+        }
+
         $channelId = $this->resolveDailyChannelId($event);
         if ($channelId === '') {
             return 'Skipped daily post: no channel configured';
@@ -265,8 +450,6 @@ final class DiscordPostingService
 
         $content = $this->buildDailyMessageContent($scheduledEventUrl);
         $embed = buildEventEmbed($event);
-        $existingChannelId = trim((string) ($event['discord_daily_channel_id'] ?? ''));
-        $existingMessageId = trim((string) ($event['discord_daily_message_id'] ?? ''));
 
         if ($existingMessageId !== '' && $existingChannelId !== '' && $existingChannelId === $channelId) {
             try {
@@ -275,12 +458,12 @@ final class DiscordPostingService
                 $this->events->markDailyPost((int) $event['id'], $existingChannelId, $existingMessageId);
                 return $mode === 'publish' ? 'Updated existing daily event embed' : 'Updated daily event embed';
             } catch (Throwable $e) {
-                $message = $e->getMessage();
-                $isUnknownMessage = str_contains($message, 'Unknown Message') || str_contains($message, '10008');
-                if (!$isUnknownMessage) {
+                if (!$this->isUnknownDiscordResourceError($e)) {
                     throw $e;
                 }
-                $this->events->clearDiscordTracking((int) $event['id']);
+                $this->events->clearDailyPostTracking((int) $event['id']);
+                $existingChannelId = '';
+                $existingMessageId = '';
             }
         }
 
@@ -288,9 +471,11 @@ final class DiscordPostingService
             try {
                 deleteDiscordMessage($existingChannelId, $existingMessageId);
             } catch (Throwable $e) {
-                // Ignore missing old messages and just recreate in the correct channel.
+                if (!$this->isUnknownDiscordResourceError($e)) {
+                    throw $e;
+                }
             }
-            $this->events->clearDiscordTracking((int) $event['id']);
+            $this->events->clearDailyPostTracking((int) $event['id']);
         }
 
         $response = postDiscordMessage($channelId, $content, [$embed]);
@@ -302,6 +487,16 @@ final class DiscordPostingService
         $this->events->markDailyPost((int) $event['id'], $channelId, $messageId);
         $this->syncPreferredRoleReactions($channelId, $messageId, (array) ($event['preferred_roles'] ?? []));
 
-        return $mode === 'sync' ? 'Posted daily event embed' : 'Posted daily event embed';
+        return 'Posted daily event embed';
+    }
+
+    private function isUnknownDiscordResourceError(Throwable $e): bool
+    {
+        $message = $e->getMessage();
+
+        return str_contains($message, 'Unknown Message')
+            || str_contains($message, 'Unknown Guild Scheduled Event')
+            || str_contains($message, '10008')
+            || str_contains($message, '10070');
     }
 }

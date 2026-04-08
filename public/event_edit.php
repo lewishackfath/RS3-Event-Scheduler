@@ -67,6 +67,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $service->updateFromForm($repo, $event, $_POST);
+        if (!$isSeriesEvent || $scope === 'single') {
+            $discordService->syncEventById((int) $event['id']);
+        }
         $discordService->refreshWeeklySummariesForDates($affectedWeekDates);
 
         if ($isSeriesEvent && $scope !== 'single') {

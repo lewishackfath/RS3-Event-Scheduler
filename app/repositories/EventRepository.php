@@ -314,6 +314,67 @@ final class EventRepository
         ]);
     }
 
+    public function clearDailyPostTracking(int $id): void
+    {
+        $stmt = db()->prepare(
+            'UPDATE clan_events
+             SET discord_daily_channel_id = NULL,
+                 discord_daily_message_id = NULL,
+                 discord_daily_posted_at_utc = NULL
+             WHERE id = :id AND clan_id = :clan_id'
+        );
+        $stmt->execute([
+            'id' => $id,
+            'clan_id' => currentClanId(),
+        ]);
+    }
+
+    public function clearScheduledEventTracking(int $id): void
+    {
+        $stmt = db()->prepare(
+            'UPDATE clan_events
+             SET discord_scheduled_event_id = NULL,
+                 discord_scheduled_event_created_at_utc = NULL
+             WHERE id = :id AND clan_id = :clan_id'
+        );
+        $stmt->execute([
+            'id' => $id,
+            'clan_id' => currentClanId(),
+        ]);
+    }
+
+    public function getEventsWithDailyPosts(): array
+    {
+        $stmt = db()->prepare(
+            'SELECT * FROM clan_events
+             WHERE clan_id = :clan_id
+               AND discord_daily_channel_id IS NOT NULL
+               AND discord_daily_channel_id <> ""
+               AND discord_daily_message_id IS NOT NULL
+               AND discord_daily_message_id <> ""
+             ORDER BY event_start_utc ASC, id ASC'
+        );
+        $stmt->execute([
+            'clan_id' => currentClanId(),
+        ]);
+
+        $rows = $stmt->fetchAll() ?: [];
+        if (!$this->hasRecurringSeriesColumn()) {
+            foreach ($rows as &$row) {
+                $row['recurring_series_id'] = null;
+            }
+            unset($row);
+        }
+        foreach ($rows as &$row) {
+            if (!array_key_exists('status', $row)) {
+                $row['status'] = 'scheduled';
+            }
+        }
+        unset($row);
+
+        return $this->attachRolesToRows($rows);
+    }
+
 
     public function getSeriesEvents(string $seriesId, ?string $fromUtc = null): array
     {

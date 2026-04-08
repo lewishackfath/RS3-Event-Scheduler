@@ -19,18 +19,21 @@ $seriesId = trim((string) ($event['recurring_series_id'] ?? ''));
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $scope = (string) ($_POST['delete_scope'] ?? 'single');
     $affectedWeekDates = [];
+    $discordService = new DiscordPostingService();
 
     if ($seriesId !== '' && $scope !== 'single') {
         $fromUtc = $scope === 'future' ? (string) $event['event_start_utc'] : null;
         foreach ($repo->getSeriesEvents($seriesId, $fromUtc) as $seriesEvent) {
             $affectedWeekDates[] = weekStartDateFromUtc((string) $seriesEvent['event_start_utc']);
+            $discordService->deleteDiscordArtifactsForEvent($seriesEvent);
         }
     } else {
         $affectedWeekDates[] = weekStartDateFromUtc((string) $event['event_start_utc']);
+        $discordService->deleteDiscordArtifactsForEvent($event);
     }
 
     $deletedCount = (new EventService())->deleteEvent($repo, $event, $scope);
-    (new DiscordPostingService())->refreshWeeklySummariesForDates($affectedWeekDates);
+    $discordService->refreshWeeklySummariesForDates($affectedWeekDates);
 
     if ($seriesId !== '' && $scope !== 'single') {
         setFlash('success', 'Deleted ' . $deletedCount . ' events from the recurring series. Weekly summary refreshed.');

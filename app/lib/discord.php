@@ -210,13 +210,8 @@ function fetchGuildMember(string $guildId, string $userId): ?array
     ];
 }
 
-function createExternalScheduledEvent(array $event, ?string $locationOverride = null): array
+function buildDiscordScheduledEventPayload(array $event, ?string $locationOverride = null): array
 {
-    $guildId = trim((string) appConfig()['discord']['guild_id']);
-    if ($guildId === '') {
-        throw new RuntimeException('DISCORD_GUILD_ID is not configured.');
-    }
-
     $durationMinutes = (int) ($event['duration_minutes'] ?? 0);
     if ($durationMinutes <= 0) {
         $durationMinutes = max(1, (int) appConfig()['discord']['default_event_duration_minutes']);
@@ -229,7 +224,7 @@ function createExternalScheduledEvent(array $event, ?string $locationOverride = 
         $location = 'RuneScape - In Game';
     }
 
-    $payload = [
+    return [
         'name' => (string) $event['event_name'],
         'privacy_level' => 2,
         'scheduled_start_time' => $startUtc->format(DateTimeInterface::ATOM),
@@ -240,8 +235,44 @@ function createExternalScheduledEvent(array $event, ?string $locationOverride = 
             'location' => $location,
         ],
     ];
+}
 
-    return discordApiRequest('POST', '/guilds/' . rawurlencode($guildId) . '/scheduled-events', $payload);
+function createExternalScheduledEvent(array $event, ?string $locationOverride = null): array
+{
+    $guildId = trim((string) appConfig()['discord']['guild_id']);
+    if ($guildId === '') {
+        throw new RuntimeException('DISCORD_GUILD_ID is not configured.');
+    }
+
+    return discordApiRequest(
+        'POST',
+        '/guilds/' . rawurlencode($guildId) . '/scheduled-events',
+        buildDiscordScheduledEventPayload($event, $locationOverride)
+    );
+}
+
+function editExternalScheduledEvent(string $scheduledEventId, array $event, ?string $locationOverride = null): array
+{
+    $guildId = trim((string) appConfig()['discord']['guild_id']);
+    if ($guildId === '') {
+        throw new RuntimeException('DISCORD_GUILD_ID is not configured.');
+    }
+
+    return discordApiRequest(
+        'PATCH',
+        '/guilds/' . rawurlencode($guildId) . '/scheduled-events/' . rawurlencode($scheduledEventId),
+        buildDiscordScheduledEventPayload($event, $locationOverride)
+    );
+}
+
+function deleteExternalScheduledEvent(string $scheduledEventId): void
+{
+    $guildId = trim((string) appConfig()['discord']['guild_id']);
+    if ($guildId === '') {
+        throw new RuntimeException('DISCORD_GUILD_ID is not configured.');
+    }
+
+    discordApiRequest('DELETE', '/guilds/' . rawurlencode($guildId) . '/scheduled-events/' . rawurlencode($scheduledEventId));
 }
 
 function buildDiscordScheduledEventUrl(string $eventId): string
