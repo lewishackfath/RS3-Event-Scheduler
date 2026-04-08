@@ -10,6 +10,7 @@ $formValues = [
     'host_discord_user_id' => '',
     'event_date' => (string) ($_GET['date'] ?? ''),
     'event_time' => '',
+    'event_start_utc_input' => '',
     'duration_minutes' => '',
     'discord_channel_id' => '',
     'event_location' => '',

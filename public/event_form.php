@@ -8,6 +8,7 @@ $localTime = $formValues['event_time'] ?? '';
 $selectedHostName = (string) ($formValues['host_name'] ?? '');
 $selectedHostId = (string) ($formValues['host_discord_user_id'] ?? '');
 $selectedChannelId = (string) ($formValues['discord_channel_id'] ?? '');
+$utcStartInput = (string) ($formValues['event_start_utc_input'] ?? '');
 $currentPage = basename((string) ($_SERVER['PHP_SELF'] ?? ''));
 $isEditPage = $currentPage === 'event_edit.php';
 $isSeriesEvent = $isEditPage && isset($event) && trim((string) ($event['recurring_series_id'] ?? '')) !== '';
@@ -27,6 +28,11 @@ $isSeriesEvent = $isEditPage && isset($event) && trim((string) ($event['recurrin
             <div class="field">
                 <label for="event_time">Event Time (<?= e(appConfig()['clan']['timezone']) ?>)</label>
                 <input type="time" id="event_time" name="event_time" value="<?= e($localTime) ?>" required>
+            </div>
+            <div class="field">
+                <label for="event_start_utc_input">Start Time in UTC (Game Time)</label>
+                <input type="datetime-local" id="event_start_utc_input" name="event_start_utc_input" value="<?= e($utcStartInput) ?>">
+                <div class="muted" style="margin-top:6px;">Optional shortcut. Enter the UTC game time here and the local date/time fields will update automatically.</div>
             </div>
             <div class="field">
                 <label for="duration_minutes">Duration Minutes</label>
@@ -101,7 +107,11 @@ $isSeriesEvent = $isEditPage && isset($event) && trim((string) ($event['recurrin
     const channelSelect = document.getElementById('discord_channel_id');
     const channelStatus = document.getElementById('channel-picker-status');
     const eventDateInput = document.getElementById('event_date');
+    const eventTimeInput = document.getElementById('event_time');
+    const utcStartInput = document.getElementById('event_start_utc_input');
+    const clanTimezone = <?= json_encode(appConfig()['clan']['timezone']) ?>;
     let controller = null;
+    let isSyncingTimeFields = false;
 
     if (eventDateInput) {
         ['focus', 'click'].forEach(function (evt) {
@@ -111,6 +121,104 @@ $isSeriesEvent = $isEditPage && isset($event) && trim((string) ($event['recurrin
                 }
             });
         });
+        eventDateInput.addEventListener('change', syncUtcFromLocal);
+    }
+
+    if (eventTimeInput) {
+        eventTimeInput.addEventListener('change', syncUtcFromLocal);
+        eventTimeInput.addEventListener('input', syncUtcFromLocal);
+    }
+
+    if (utcStartInput) {
+        utcStartInput.addEventListener('change', syncLocalFromUtc);
+        utcStartInput.addEventListener('input', syncLocalFromUtc);
+    }
+
+
+    function pad(value) {
+        return String(value).padStart(2, '0');
+    }
+
+    function getTimeZoneOffsetMinutes(date, timeZone) {
+        const formatter = new Intl.DateTimeFormat('en-CA', {
+            timeZone: timeZone,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false,
+        });
+        const parts = formatter.formatToParts(date);
+        const map = {};
+        parts.forEach(function (part) {
+            if (part.type !== 'literal') {
+                map[part.type] = part.value;
+            }
+        });
+        const asUtc = Date.UTC(
+            Number(map.year),
+            Number(map.month) - 1,
+            Number(map.day),
+            Number(map.hour),
+            Number(map.minute),
+            Number(map.second)
+        );
+        return Math.round((asUtc - date.getTime()) / 60000);
+    }
+
+    function syncUtcFromLocal() {
+        if (!eventDateInput || !eventTimeInput || !utcStartInput) return;
+        if (!eventDateInput.value || !eventTimeInput.value) return;
+        if (isSyncingTimeFields) return;
+
+        isSyncingTimeFields = true;
+        try {
+            const parts = eventDateInput.value.split('-').map(Number);
+            const timeParts = eventTimeInput.value.split(':').map(Number);
+            if (parts.length !== 3 || timeParts.length < 2) return;
+
+            const utcGuessMs = Date.UTC(parts[0], parts[1] - 1, parts[2], timeParts[0], timeParts[1], 0);
+            const offsetMinutes = getTimeZoneOffsetMinutes(new Date(utcGuessMs), clanTimezone);
+            const utcDate = new Date(utcGuessMs - (offsetMinutes * 60000));
+            utcStartInput.value = utcDate.getUTCFullYear() + '-' + pad(utcDate.getUTCMonth() + 1) + '-' + pad(utcDate.getUTCDate()) + 'T' + pad(utcDate.getUTCHours()) + ':' + pad(utcDate.getUTCMinutes());
+        } finally {
+            isSyncingTimeFields = false;
+        }
+    }
+
+    function syncLocalFromUtc() {
+        if (!eventDateInput || !eventTimeInput || !utcStartInput) return;
+        if (!utcStartInput.value) return;
+        if (isSyncingTimeFields) return;
+
+        const dt = new Date(utcStartInput.value + ':00Z');
+        if (Number.isNaN(dt.getTime())) return;
+
+        isSyncingTimeFields = true;
+        try {
+            const formatter = new Intl.DateTimeFormat('en-CA', {
+                timeZone: clanTimezone,
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false,
+            });
+            const parts = formatter.formatToParts(dt);
+            const map = {};
+            parts.forEach(function (part) {
+                if (part.type !== 'literal') {
+                    map[part.type] = part.value;
+                }
+            });
+            eventDateInput.value = map.year + '-' + map.month + '-' + map.day;
+            eventTimeInput.value = map.hour + ':' + map.minute;
+        } finally {
+            isSyncingTimeFields = false;
+        }
     }
 
     function hideResults() {
@@ -214,6 +322,12 @@ $isSeriesEvent = $isEditPage && isset($event) && trim((string) ($event['recurrin
     recurringToggle.addEventListener('change', function () {
         recurringWrap.style.display = recurringToggle.checked ? '' : 'none';
     });
+
+    if (utcStartInput && utcStartInput.value) {
+        syncLocalFromUtc();
+    } else {
+        syncUtcFromLocal();
+    }
 
     loadChannels();
 })();

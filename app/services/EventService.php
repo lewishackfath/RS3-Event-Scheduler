@@ -12,6 +12,7 @@ final class EventService
         $eventTime = trim((string) ($input['event_time'] ?? ''));
         $hostName = trim((string) ($input['host_name'] ?? ''));
         $hostDiscordUserId = trim((string) ($input['host_discord_user_id'] ?? ''));
+        $eventStartUtcInput = trim((string) ($input['event_start_utc_input'] ?? ''));
         $isRecurringWeekly = isset($input['is_recurring_weekly']) ? 1 : 0;
         $recurringUntilDate = trim((string) ($input['recurring_until_date'] ?? ''));
 
@@ -28,13 +29,17 @@ final class EventService
             throw new InvalidArgumentException('Recurring end date cannot be earlier than the event date.');
         }
 
+        $eventStartUtc = $eventStartUtcInput !== ''
+            ? utcInputToUtc($eventStartUtcInput)
+            : clanLocalToUtc($eventDate, $eventTime);
+
         return [
             'event_name' => $eventName,
             'event_description' => trim((string) ($input['event_description'] ?? '')),
             'event_location' => trim((string) ($input['event_location'] ?? '')),
             'host_name' => $hostName,
             'host_discord_user_id' => $hostDiscordUserId,
-            'event_start_utc' => clanLocalToUtc($eventDate, $eventTime),
+            'event_start_utc' => $eventStartUtc,
             'duration_minutes' => trim((string) ($input['duration_minutes'] ?? '')),
             'image_url' => trim((string) ($input['image_url'] ?? '')),
             'discord_channel_id' => trim((string) ($input['discord_channel_id'] ?? appConfig()['clan']['default_discord_channel_id'] ?? '')),

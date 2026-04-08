@@ -25,6 +25,28 @@ function utcToClanLocal(string $utcDateTime): DateTimeImmutable
     return $dt->setTimezone(clanTimezone());
 }
 
+
+function utcInputToUtc(string $utcDateTimeInput): string
+{
+    $value = trim($utcDateTimeInput);
+    if ($value === '') {
+        throw new InvalidArgumentException('UTC start time is required.');
+    }
+
+    $normalised = str_replace('T', ' ', $value);
+    if (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/', $normalised)) {
+        $normalised .= ':00';
+    }
+
+    $dt = new DateTimeImmutable($normalised, utcTimezone());
+    return $dt->format('Y-m-d H:i:s');
+}
+
+function utcToInputValue(string $utcDateTime): string
+{
+    return (new DateTimeImmutable($utcDateTime, utcTimezone()))->format('Y-m-d\TH:i');
+}
+
 function discordUnixTimestamp(string $utcDateTime): int
 {
     $dt = new DateTimeImmutable($utcDateTime, utcTimezone());

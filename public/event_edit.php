@@ -24,6 +24,7 @@ $formValues = [
     'host_discord_user_id' => $event['host_discord_user_id'] ?? '',
     'event_date' => $local->format('Y-m-d'),
     'event_time' => $local->format('H:i'),
+    'event_start_utc_input' => utcToInputValue($event['event_start_utc']),
     'duration_minutes' => $event['duration_minutes'],
     'discord_channel_id' => $event['discord_channel_id'],
     'event_location' => $event['event_location'] ?? '',
