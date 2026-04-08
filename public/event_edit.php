@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/bootstrap.php';
 require_once __DIR__ . '/partials.php';
+require_once __DIR__ . '/../app/services/DiscordPostingService.php';
 
 $id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
 $repo = new EventRepository();
@@ -43,12 +44,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     try {
         $service = new EventService();
-        $service->updateFromForm($repo, $event, $_POST);
+        $discordService = new DiscordPostingService();
         $scope = (string) ($_POST['recurring_edit_scope'] ?? 'single');
+        $normalised = $service->normaliseFormData($_POST);
+        $affectedWeekDates = [];
+
         if ($isSeriesEvent && $scope !== 'single') {
-            setFlash('success', 'Recurring event series updated successfully.');
+            $fromUtc = $scope === 'future' ? (string) $event['event_start_utc'] : null;
+            foreach ($repo->getSeriesEvents((string) $event['recurring_series_id'], $fromUtc) as $seriesEvent) {
+                $affectedWeekDates[] = weekStartDateFromUtc((string) $seriesEvent['event_start_utc']);
+            }
+
+            $newRangeEndUtc = (string) ($normalised['recurring_until_utc'] ?: $normalised['event_start_utc']);
+            $affectedWeekDates = array_merge(
+                $affectedWeekDates,
+                weekDatesCoveredByUtcRange((string) $normalised['event_start_utc'], $newRangeEndUtc)
+            );
         } else {
-            setFlash('success', 'Event updated successfully.');
+            $affectedWeekDates[] = weekStartDateFromUtc((string) $event['event_start_utc']);
+            $affectedWeekDates[] = weekStartDateFromUtc((string) $normalised['event_start_utc']);
+        }
+
+        $service->updateFromForm($repo, $event, $_POST);
+        $discordService->refreshWeeklySummariesForDates($affectedWeekDates);
+
+        if ($isSeriesEvent && $scope !== 'single') {
+            setFlash('success', 'Recurring event series updated successfully. Weekly summary refreshed.');
+        } else {
+            setFlash('success', 'Event updated successfully. Weekly summary refreshed.');
         }
         redirect('index.php?date=' . urlencode((string) $_POST['event_date']));
     } catch (Throwable $e) {

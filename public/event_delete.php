@@ -18,30 +18,26 @@ $seriesId = trim((string) ($event['recurring_series_id'] ?? ''));
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $scope = (string) ($_POST['delete_scope'] ?? 'single');
-    $discord = new DiscordPostingService();
-    $discordMessages = [];
+    $affectedWeekDates = [];
 
-    if ($seriesId !== '' && $scope === 'future') {
-        $discordMessages = $discord->deleteEventArtifactsForSeries($seriesId, (string) $event['event_start_utc']);
-    } elseif ($seriesId !== '' && $scope === 'all') {
-        $discordMessages = $discord->deleteEventArtifactsForSeries($seriesId, null);
+    if ($seriesId !== '' && $scope !== 'single') {
+        $fromUtc = $scope === 'future' ? (string) $event['event_start_utc'] : null;
+        foreach ($repo->getSeriesEvents($seriesId, $fromUtc) as $seriesEvent) {
+            $affectedWeekDates[] = weekStartDateFromUtc((string) $seriesEvent['event_start_utc']);
+        }
     } else {
-        $discordMessages = $discord->deleteEventArtifactsById((int) $event['id']);
+        $affectedWeekDates[] = weekStartDateFromUtc((string) $event['event_start_utc']);
     }
 
     $deletedCount = (new EventService())->deleteEvent($repo, $event, $scope);
+    (new DiscordPostingService())->refreshWeeklySummariesForDates($affectedWeekDates);
 
     if ($seriesId !== '' && $scope !== 'single') {
-        $message = 'Deleted ' . $deletedCount . ' events from the recurring series.';
+        setFlash('success', 'Deleted ' . $deletedCount . ' events from the recurring series. Weekly summary refreshed.');
     } else {
-        $message = 'Event deleted successfully.';
+        setFlash('success', 'Event deleted successfully. Weekly summary refreshed.');
     }
 
-    if ($discordMessages !== []) {
-        $message .= ' ' . implode(' | ', $discordMessages);
-    }
-
-    setFlash('success', trim($message));
     redirect('index.php');
 }
 

@@ -68,6 +68,31 @@ function weekRangeFromDate(?string $date = null): array
     ];
 }
 
+
+function weekStartDateFromUtc(string $utcDateTime): string
+{
+    return utcToClanLocal($utcDateTime)->modify('monday this week')->format('Y-m-d');
+}
+
+function weekDatesCoveredByUtcRange(string $startUtc, string $endUtc): array
+{
+    $startLocal = utcToClanLocal($startUtc)->modify('monday this week')->setTime(0, 0, 0);
+    $endLocal = utcToClanLocal($endUtc)->modify('monday this week')->setTime(0, 0, 0);
+
+    if ($endLocal < $startLocal) {
+        [$startLocal, $endLocal] = [$endLocal, $startLocal];
+    }
+
+    $dates = [];
+    $cursor = $startLocal;
+    while ($cursor <= $endLocal) {
+        $dates[] = $cursor->format('Y-m-d');
+        $cursor = $cursor->modify('+7 days');
+    }
+
+    return $dates;
+}
+
 function dayRangeFromDate(?string $date = null): array
 {
     $tz = clanTimezone();
