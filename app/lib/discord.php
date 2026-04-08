@@ -103,9 +103,24 @@ function addDiscordReaction(string $channelId, string $messageId, string $emoji)
     discordApiRequest('PUT', '/channels/' . rawurlencode($channelId) . '/messages/' . rawurlencode($messageId) . '/reactions/' . $encodedEmoji . '/@me');
 }
 
+function removeDiscordOwnReaction(string $channelId, string $messageId, string $emoji): void
+{
+    $encodedEmoji = encodeDiscordEmojiForUrl($emoji);
+    if ($encodedEmoji === '') {
+        return;
+    }
+
+    discordApiRequest('DELETE', '/channels/' . rawurlencode($channelId) . '/messages/' . rawurlencode($messageId) . '/reactions/' . $encodedEmoji . '/@me');
+}
+
 function clearDiscordReactions(string $channelId, string $messageId): void
 {
     discordApiRequest('DELETE', '/channels/' . rawurlencode($channelId) . '/messages/' . rawurlencode($messageId) . '/reactions');
+}
+
+function fetchDiscordMessage(string $channelId, string $messageId): array
+{
+    return discordApiRequest('GET', '/channels/' . rawurlencode($channelId) . '/messages/' . rawurlencode($messageId));
 }
 
 function deleteDiscordMessage(string $channelId, string $messageId): void

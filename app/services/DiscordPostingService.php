@@ -422,16 +422,76 @@ final class DiscordPostingService
 
     private function syncPreferredRoleReactions(string $channelId, string $messageId, array $roles): void
     {
-        clearDiscordReactions($channelId, $messageId);
-
-        $seen = [];
+        $desiredByKey = [];
         foreach ($roles as $role) {
             $emoji = trim((string) ($role['reaction_emoji'] ?? ''));
-            if ($emoji === '' || isset($seen[$emoji])) {
+            $emojiKey = encodeDiscordEmojiForUrl($emoji);
+            if ($emoji === '' || $emojiKey === '' || isset($desiredByKey[$emojiKey])) {
                 continue;
             }
-            $seen[$emoji] = true;
-            addDiscordReaction($channelId, $messageId, $emoji);
+            $desiredByKey[$emojiKey] = $emoji;
+        }
+
+        try {
+            $message = fetchDiscordMessage($channelId, $messageId);
+        } catch (Throwable $e) {
+            if ($this->isUnknownDiscordResourceError($e)) {
+                return;
+            }
+            throw $e;
+        }
+
+        $existingBotReactionKeys = [];
+        foreach ((array) ($message['reactions'] ?? []) as $reaction) {
+            if (!is_array($reaction) || empty($reaction['me'])) {
+                continue;
+            }
+
+            $emojiData = (array) ($reaction['emoji'] ?? []);
+            $emojiKey = '';
+
+            if (!empty($emojiData['id'])) {
+                $emojiName = trim((string) ($emojiData['name'] ?? ''));
+                if ($emojiName !== '') {
+                    $emojiKey = rawurlencode($emojiName . ':' . (string) $emojiData['id']);
+                }
+            } else {
+                $emojiKey = encodeDiscordEmojiForUrl((string) ($emojiData['name'] ?? ''));
+            }
+
+            if ($emojiKey === '') {
+                continue;
+            }
+
+            $existingBotReactionKeys[$emojiKey] = true;
+        }
+
+        foreach ($existingBotReactionKeys as $emojiKey => $_) {
+            if (isset($desiredByKey[$emojiKey])) {
+                continue;
+            }
+
+            try {
+                removeDiscordOwnReaction($channelId, $messageId, rawurldecode($emojiKey));
+            } catch (Throwable $e) {
+                if (!$this->isUnknownDiscordResourceError($e)) {
+                    throw $e;
+                }
+            }
+        }
+
+        foreach ($desiredByKey as $emojiKey => $emoji) {
+            if (isset($existingBotReactionKeys[$emojiKey])) {
+                continue;
+            }
+
+            try {
+                addDiscordReaction($channelId, $messageId, $emoji);
+            } catch (Throwable $e) {
+                if (!$this->isUnknownDiscordResourceError($e)) {
+                    throw $e;
+                }
+            }
         }
     }
 
