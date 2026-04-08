@@ -163,16 +163,27 @@ final class DiscordPostingService
         $config = appConfig()['discord'];
         $eventResults = [];
         $scheduledEventUrl = '';
+        $hasExistingScheduledEvent = trim((string) ($event['discord_scheduled_event_id'] ?? '')) !== '';
+        $hasExistingDailyPost = trim((string) ($event['discord_daily_channel_id'] ?? '')) !== ''
+            && trim((string) ($event['discord_daily_message_id'] ?? '')) !== '';
 
         if ((bool) $config['enable_scheduled_events']) {
-            [$scheduledEventUrl, $scheduledMessage] = $this->syncScheduledEvent($event);
-            $eventResults[] = $scheduledMessage;
+            if ($hasExistingScheduledEvent || $this->hasEventEnded($event) || (string) ($event['status'] ?? 'scheduled') === 'cancelled') {
+                [$scheduledEventUrl, $scheduledMessage] = $this->syncScheduledEvent($event);
+                $eventResults[] = $scheduledMessage;
+            } else {
+                $eventResults[] = 'Skipped native Discord event: only created by daily cron';
+            }
         } else {
             $eventResults[] = 'Scheduled event creation disabled';
         }
 
         if ((bool) $config['enable_daily_event_posts']) {
-            $eventResults[] = $this->postOrUpdateDailyEventMessage($event, 'sync', $scheduledEventUrl);
+            if ($hasExistingDailyPost || $this->hasEventEnded($event) || (string) ($event['status'] ?? 'scheduled') === 'cancelled') {
+                $eventResults[] = $this->postOrUpdateDailyEventMessage($event, 'sync', $scheduledEventUrl);
+            } else {
+                $eventResults[] = 'Skipped daily event embed: only created by daily cron';
+            }
         } else {
             $eventResults[] = 'Daily event posting disabled';
         }
