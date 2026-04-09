@@ -25,7 +25,7 @@ function discordApiRequest(string $method, string $endpoint, array $payload = []
     $headers = [
         'Authorization: Bot ' . $token,
         'Content-Type: application/json',
-        'User-Agent: ClanEventScheduler/1.6',
+        'User-Agent: ClanEventScheduler/1.7',
     ];
 
     $options = [
@@ -77,7 +77,6 @@ function editDiscordMessage(string $channelId, string $messageId, string $conten
     ]);
 }
 
-
 function encodeDiscordEmojiForUrl(string $emoji): string
 {
     $emoji = trim($emoji);
@@ -123,6 +122,11 @@ function fetchDiscordMessage(string $channelId, string $messageId): array
     return discordApiRequest('GET', '/channels/' . rawurlencode($channelId) . '/messages/' . rawurlencode($messageId));
 }
 
+function fetchDiscordChannel(string $channelId): array
+{
+    return discordApiRequest('GET', '/channels/' . rawurlencode($channelId));
+}
+
 function deleteDiscordMessage(string $channelId, string $messageId): void
 {
     discordApiRequest('DELETE', '/channels/' . rawurlencode($channelId) . '/messages/' . rawurlencode($messageId));
@@ -135,7 +139,7 @@ function fetchGuildChannels(string $guildId): array
         return [];
     }
 
-    $allowedTypes = [0, 5];
+    $allowedTypes = [0, 2, 4, 5];
     $filtered = array_values(array_filter($channels, static function ($channel) use ($allowedTypes): bool {
         return is_array($channel)
             && isset($channel['id'], $channel['name'], $channel['type'])
@@ -156,6 +160,7 @@ function fetchGuildChannels(string $guildId): array
             'id' => (string) $channel['id'],
             'name' => (string) $channel['name'],
             'type' => (int) $channel['type'],
+            'parent_id' => isset($channel['parent_id']) ? (string) $channel['parent_id'] : null,
         ];
     }, $filtered);
 }
@@ -225,6 +230,30 @@ function fetchGuildMember(string $guildId, string $userId): ?array
     ];
 }
 
+function discordPermissionValue(string $name): string
+{
+    static $map = [
+        'VIEW_CHANNEL' => '1024',
+        'CONNECT' => '1048576',
+        'SPEAK' => '2097152',
+    ];
+
+    if (!isset($map[$name])) {
+        throw new InvalidArgumentException('Unsupported Discord permission: ' . $name);
+    }
+
+    return $map[$name];
+}
+
+function discordPermissionSum(array $permissions): string
+{
+    $sum = 0;
+    foreach ($permissions as $permission) {
+        $sum += (int) discordPermissionValue((string) $permission);
+    }
+    return (string) $sum;
+}
+
 function buildDiscordScheduledEventPayload(array $event, ?string $locationOverride = null): array
 {
     $durationMinutes = (int) ($event['duration_minutes'] ?? 0);
@@ -234,25 +263,37 @@ function buildDiscordScheduledEventPayload(array $event, ?string $locationOverri
 
     $startUtc = new DateTimeImmutable((string) $event['event_start_utc'], utcTimezone());
     $endUtc = $startUtc->modify('+' . $durationMinutes . ' minutes');
-    $location = trim((string) ($locationOverride ?? ($event['event_location'] ?? '') ?? appConfig()['discord']['event_location_default'] ?? ''));
-    if ($location === '') {
-        $location = 'RuneScape - In Game';
-    }
+    $voiceChannelId = trim((string) ($event['discord_voice_channel_id'] ?? ''));
 
-    return [
+    $payload = [
         'name' => (string) $event['event_name'],
         'privacy_level' => 2,
         'scheduled_start_time' => $startUtc->format(DateTimeInterface::ATOM),
         'scheduled_end_time' => $endUtc->format(DateTimeInterface::ATOM),
         'description' => trim((string) ($event['event_description'] ?? '')),
-        'entity_type' => 3,
-        'entity_metadata' => [
-            'location' => $location,
-        ],
     ];
+
+    if ($voiceChannelId !== '') {
+        $payload['entity_type'] = 2;
+        $payload['channel_id'] = $voiceChannelId;
+        $payload['entity_metadata'] = null;
+    } else {
+        $location = trim((string) ($locationOverride ?? ($event['event_location'] ?? '') ?? appConfig()['discord']['event_location_default'] ?? ''));
+        if ($location === '') {
+            $location = 'RuneScape - In Game';
+        }
+
+        $payload['entity_type'] = 3;
+        $payload['channel_id'] = null;
+        $payload['entity_metadata'] = [
+            'location' => $location,
+        ];
+    }
+
+    return $payload;
 }
 
-function createExternalScheduledEvent(array $event, ?string $locationOverride = null): array
+function createScheduledEvent(array $event, ?string $locationOverride = null): array
 {
     $guildId = trim((string) appConfig()['discord']['guild_id']);
     if ($guildId === '') {
@@ -266,7 +307,7 @@ function createExternalScheduledEvent(array $event, ?string $locationOverride = 
     );
 }
 
-function editExternalScheduledEvent(string $scheduledEventId, array $event, ?string $locationOverride = null): array
+function editScheduledEvent(string $scheduledEventId, array $event, ?string $locationOverride = null, array $extraPayload = []): array
 {
     $guildId = trim((string) appConfig()['discord']['guild_id']);
     if ($guildId === '') {
@@ -276,11 +317,69 @@ function editExternalScheduledEvent(string $scheduledEventId, array $event, ?str
     return discordApiRequest(
         'PATCH',
         '/guilds/' . rawurlencode($guildId) . '/scheduled-events/' . rawurlencode($scheduledEventId),
-        buildDiscordScheduledEventPayload($event, $locationOverride)
+        array_merge(buildDiscordScheduledEventPayload($event, $locationOverride), $extraPayload)
     );
 }
 
-function deleteExternalScheduledEvent(string $scheduledEventId): void
+function fetchScheduledEvent(string $scheduledEventId, bool $withUserCount = false): array
+{
+    $guildId = trim((string) appConfig()['discord']['guild_id']);
+    if ($guildId === '') {
+        throw new RuntimeException('DISCORD_GUILD_ID is not configured.');
+    }
+
+    return discordApiRequest(
+        'GET',
+        '/guilds/' . rawurlencode($guildId) . '/scheduled-events/' . rawurlencode($scheduledEventId),
+        [],
+        ['with_user_count' => $withUserCount ? 'true' : 'false']
+    );
+}
+
+function fetchScheduledEventUsers(string $scheduledEventId): array
+{
+    $guildId = trim((string) appConfig()['discord']['guild_id']);
+    if ($guildId === '') {
+        throw new RuntimeException('DISCORD_GUILD_ID is not configured.');
+    }
+
+    $users = [];
+    $after = null;
+
+    do {
+        $query = [
+            'limit' => 100,
+            'with_member' => 'true',
+        ];
+        if ($after !== null) {
+            $query['after'] = $after;
+        }
+
+        $page = discordApiRequest(
+            'GET',
+            '/guilds/' . rawurlencode($guildId) . '/scheduled-events/' . rawurlencode($scheduledEventId) . '/users',
+            [],
+            $query
+        );
+
+        if (!is_array($page) || $page === []) {
+            break;
+        }
+
+        foreach ($page as $row) {
+            if (!is_array($row) || empty($row['user']['id'])) {
+                continue;
+            }
+            $userId = (string) $row['user']['id'];
+            $users[$userId] = $userId;
+            $after = $userId;
+        }
+    } while (count($page) === 100);
+
+    return array_values($users);
+}
+
+function deleteScheduledEvent(string $scheduledEventId): void
 {
     $guildId = trim((string) appConfig()['discord']['guild_id']);
     if ($guildId === '') {
@@ -300,6 +399,55 @@ function buildDiscordScheduledEventUrl(string $eventId): string
     return 'https://discord.com/events/' . rawurlencode($guildId) . '/' . rawurlencode($eventId);
 }
 
+function createGuildVoiceChannel(string $name, array $permissionOverwrites = [], ?string $parentId = null, int $userLimit = 0): array
+{
+    $guildId = trim((string) appConfig()['discord']['guild_id']);
+    if ($guildId === '') {
+        throw new RuntimeException('DISCORD_GUILD_ID is not configured.');
+    }
+
+    $payload = [
+        'name' => mb_substr(trim($name) !== '' ? trim($name) : 'Event Voice', 0, 100),
+        'type' => 2,
+        'user_limit' => max(0, $userLimit),
+        'permission_overwrites' => array_values($permissionOverwrites),
+    ];
+    if ($parentId !== null && trim($parentId) !== '') {
+        $payload['parent_id'] = trim($parentId);
+    }
+
+    return discordApiRequest('POST', '/guilds/' . rawurlencode($guildId) . '/channels', $payload);
+}
+
+function editDiscordChannelPermissions(string $channelId, string $overwriteId, string $overwriteType, array $allowPermissions = [], array $denyPermissions = []): void
+{
+    discordApiRequest('PUT', '/channels/' . rawurlencode($channelId) . '/permissions/' . rawurlencode($overwriteId), [
+        'type' => $overwriteType,
+        'allow' => discordPermissionSum($allowPermissions),
+        'deny' => discordPermissionSum($denyPermissions),
+    ]);
+}
+
+function deleteDiscordChannelPermission(string $channelId, string $overwriteId): void
+{
+    discordApiRequest('DELETE', '/channels/' . rawurlencode($channelId) . '/permissions/' . rawurlencode($overwriteId));
+}
+
+function deleteDiscordChannel(string $channelId): void
+{
+    discordApiRequest('DELETE', '/channels/' . rawurlencode($channelId));
+}
+
+function getUserVoiceState(string $guildId, string $userId): ?array
+{
+    try {
+        $state = discordApiRequest('GET', '/guilds/' . rawurlencode($guildId) . '/voice-states/' . rawurlencode($userId));
+    } catch (Throwable $e) {
+        return null;
+    }
+
+    return is_array($state) ? $state : null;
+}
 
 function discordEditMessage(string $channelId, string $messageId, array $payload): array
 {

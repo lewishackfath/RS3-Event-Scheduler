@@ -82,6 +82,10 @@ $isSeriesEvent = $isEditPage && isset($event) && trim((string) ($event['recurrin
             <input type="text" id="event_location" name="event_location" value="<?= e($formValues['event_location'] ?? '') ?>" placeholder="Optional. Falls back to DISCORD_EVENT_LOCATION_DEFAULT if left blank.">
         </div>
         <div class="field">
+            <label><input type="checkbox" name="create_voice_chat_for_event" value="1" <?= !empty($formValues['create_voice_chat_for_event']) ? 'checked' : '' ?>> Create Voice Chat for Event</label>
+            <div class="muted" style="margin-top:6px;">When enabled, the Discord sync will create a temporary voice channel roughly <?= (int) appConfig()['discord']['event_voice_create_before_minutes'] ?> minutes before the event starts, allow everyone to view/join it, and only subscribed event attendees will be able to speak.</div>
+        </div>
+        <div class="field">
             <label for="image_url">Custom Image URL</label>
             <input type="url" id="image_url" name="image_url" value="<?= e($formValues['image_url'] ?? '') ?>">
         </div>

@@ -61,10 +61,12 @@ final class DiscordPostingService
 
     public function syncPendingDiscordItemsForToday(?string $date = null): array
     {
-        $config = appConfig()['discord'];
         $range = dayRangeFromDate($date);
         $events = $this->events->getForDay($range['day_start_utc'], $range['day_end_utc']);
-        $results = $this->cleanupExpiredDailyPosts();
+        $results = array_merge(
+            $this->cleanupExpiredVoiceChannels(),
+            $this->cleanupExpiredDailyPosts()
+        );
 
         if ($events === []) {
             $results[] = [
@@ -77,28 +79,7 @@ final class DiscordPostingService
         }
 
         foreach ($events as $event) {
-            $eventResults = [];
-            $scheduledEventUrl = '';
-
-            if ((bool) $config['enable_scheduled_events']) {
-                [$scheduledEventUrl, $scheduledMessage] = $this->syncScheduledEvent($event);
-                $eventResults[] = $scheduledMessage;
-            } else {
-                $eventResults[] = 'Scheduled event creation disabled';
-            }
-
-            if ((bool) $config['enable_daily_event_posts']) {
-                $eventResults[] = $this->postOrUpdateDailyEventMessage($event, 'sync', $scheduledEventUrl);
-            } else {
-                $eventResults[] = 'Daily event posting disabled';
-            }
-
-            $results[] = [
-                'scope' => 'day_of_events',
-                'event_name' => (string) $event['event_name'],
-                'status' => 'processed',
-                'message' => implode(' · ', $eventResults),
-            ];
+            $results[] = $this->syncSingleEvent($event, true);
         }
 
         return array_merge($results, $this->refreshWeeklySummariesForDates([$range['day_start_local']->format('Y-m-d')]));
@@ -106,10 +87,12 @@ final class DiscordPostingService
 
     public function publishDayOfEvents(?string $date = null): array
     {
-        $config = appConfig()['discord'];
         $range = dayRangeFromDate($date);
         $events = $this->events->getForDay($range['day_start_utc'], $range['day_end_utc']);
-        $results = $this->cleanupExpiredDailyPosts();
+        $results = array_merge(
+            $this->cleanupExpiredVoiceChannels(),
+            $this->cleanupExpiredDailyPosts()
+        );
 
         if ($events === []) {
             $results[] = [
@@ -121,33 +104,11 @@ final class DiscordPostingService
         }
 
         foreach ($events as $event) {
-            $eventResults = [];
-            $scheduledEventUrl = '';
-
-            if ((bool) $config['enable_scheduled_events']) {
-                [$scheduledEventUrl, $scheduledMessage] = $this->syncScheduledEvent($event);
-                $eventResults[] = $scheduledMessage;
-            } else {
-                $eventResults[] = 'Scheduled event creation disabled';
-            }
-
-            if ((bool) $config['enable_daily_event_posts']) {
-                $eventResults[] = $this->postOrUpdateDailyEventMessage($event, 'publish', $scheduledEventUrl);
-            } else {
-                $eventResults[] = 'Daily event posting disabled';
-            }
-
-            $results[] = [
-                'scope' => 'day_of_events',
-                'event_name' => (string) $event['event_name'],
-                'status' => 'processed',
-                'message' => implode(' · ', $eventResults),
-            ];
+            $results[] = $this->syncSingleEvent($event, false);
         }
 
         return $results;
     }
-
 
     public function syncEventById(int $eventId): array
     {
@@ -160,40 +121,7 @@ final class DiscordPostingService
             ]];
         }
 
-        $config = appConfig()['discord'];
-        $eventResults = [];
-        $scheduledEventUrl = '';
-        $hasExistingScheduledEvent = trim((string) ($event['discord_scheduled_event_id'] ?? '')) !== '';
-        $hasExistingDailyPost = trim((string) ($event['discord_daily_channel_id'] ?? '')) !== ''
-            && trim((string) ($event['discord_daily_message_id'] ?? '')) !== '';
-
-        if ((bool) $config['enable_scheduled_events']) {
-            if ($hasExistingScheduledEvent || $this->hasEventEnded($event) || (string) ($event['status'] ?? 'scheduled') === 'cancelled') {
-                [$scheduledEventUrl, $scheduledMessage] = $this->syncScheduledEvent($event);
-                $eventResults[] = $scheduledMessage;
-            } else {
-                $eventResults[] = 'Skipped native Discord event: only created by daily cron';
-            }
-        } else {
-            $eventResults[] = 'Scheduled event creation disabled';
-        }
-
-        if ((bool) $config['enable_daily_event_posts']) {
-            if ($hasExistingDailyPost || $this->hasEventEnded($event) || (string) ($event['status'] ?? 'scheduled') === 'cancelled') {
-                $eventResults[] = $this->postOrUpdateDailyEventMessage($event, 'sync', $scheduledEventUrl);
-            } else {
-                $eventResults[] = 'Skipped daily event embed: only created by daily cron';
-            }
-        } else {
-            $eventResults[] = 'Daily event posting disabled';
-        }
-
-        return [[
-            'scope' => 'day_of_events',
-            'event_name' => (string) $event['event_name'],
-            'status' => 'processed',
-            'message' => implode(' · ', $eventResults),
-        ]];
+        return [$this->syncSingleEvent($event, true)];
     }
 
     public function deleteDiscordArtifactsForEvent(array $event): array
@@ -218,10 +146,27 @@ final class DiscordPostingService
             $this->events->clearDailyPostTracking((int) $event['id']);
         }
 
+        $voiceChannelId = trim((string) ($event['discord_voice_channel_id'] ?? ''));
+        if ($voiceChannelId !== '') {
+            try {
+                deleteDiscordChannel($voiceChannelId);
+                $results[] = 'Deleted event voice channel';
+            } catch (Throwable $e) {
+                if (!$this->isUnknownDiscordResourceError($e)) {
+                    throw $e;
+                }
+                $results[] = 'Event voice channel was already missing';
+            }
+        }
+
+        if (!empty($event['id'])) {
+            $this->events->clearVoiceChannelTracking((int) $event['id']);
+        }
+
         $scheduledEventId = trim((string) ($event['discord_scheduled_event_id'] ?? ''));
         if ($scheduledEventId !== '') {
             try {
-                deleteExternalScheduledEvent($scheduledEventId);
+                deleteScheduledEvent($scheduledEventId);
                 $results[] = 'Deleted native Discord event';
             } catch (Throwable $e) {
                 if (!$this->isUnknownDiscordResourceError($e)) {
@@ -236,6 +181,56 @@ final class DiscordPostingService
         }
 
         return $results;
+    }
+
+    private function syncSingleEvent(array $event, bool $allowDailyCronCreation): array
+    {
+        $config = appConfig()['discord'];
+        $eventResults = [];
+        $scheduledEventUrl = '';
+        $hasExistingScheduledEvent = trim((string) ($event['discord_scheduled_event_id'] ?? '')) !== '';
+        $hasExistingDailyPost = trim((string) ($event['discord_daily_channel_id'] ?? '')) !== ''
+            && trim((string) ($event['discord_daily_message_id'] ?? '')) !== '';
+
+        if ((bool) $config['enable_scheduled_events']) {
+            if ($allowDailyCronCreation || $hasExistingScheduledEvent || $this->hasEventEnded($event) || (string) ($event['status'] ?? 'scheduled') === 'cancelled') {
+                [$scheduledEventUrl, $scheduledMessage] = $this->syncScheduledEvent($event);
+                $eventResults[] = $scheduledMessage;
+                $event = $this->events->getById((int) $event['id']) ?? $event;
+            } else {
+                $eventResults[] = 'Skipped native Discord event: only created by daily cron';
+            }
+        } else {
+            $eventResults[] = 'Scheduled event creation disabled';
+        }
+
+        [$voiceMessage, $requiresScheduledResync] = $this->syncEventVoiceChannel($event);
+        if ($voiceMessage !== '') {
+            $eventResults[] = $voiceMessage;
+        }
+        if ($requiresScheduledResync && (bool) $config['enable_scheduled_events']) {
+            $event = $this->events->getById((int) $event['id']) ?? $event;
+            [$scheduledEventUrl, $scheduledMessage] = $this->syncScheduledEvent($event);
+            $eventResults[] = $scheduledMessage;
+            $event = $this->events->getById((int) $event['id']) ?? $event;
+        }
+
+        if ((bool) $config['enable_daily_event_posts']) {
+            if ($allowDailyCronCreation || $hasExistingDailyPost || $this->hasEventEnded($event) || (string) ($event['status'] ?? 'scheduled') === 'cancelled') {
+                $eventResults[] = $this->postOrUpdateDailyEventMessage($event, $allowDailyCronCreation ? 'sync' : 'publish', $scheduledEventUrl);
+            } else {
+                $eventResults[] = 'Skipped daily event embed: only created by daily cron';
+            }
+        } else {
+            $eventResults[] = 'Daily event posting disabled';
+        }
+
+        return [
+            'scope' => 'day_of_events',
+            'event_name' => (string) $event['event_name'],
+            'status' => 'processed',
+            'message' => implode(' · ', array_values(array_filter($eventResults, static fn (string $value): bool => trim($value) !== ''))),
+        ];
     }
 
     private function postOrUpdateWeeklySummaryForWeek(?string $date, bool $createIfMissing): array
@@ -310,7 +305,7 @@ final class DiscordPostingService
 
         if ($scheduledEventId !== '' && !$canExist) {
             try {
-                deleteExternalScheduledEvent($scheduledEventId);
+                deleteScheduledEvent($scheduledEventId);
             } catch (Throwable $e) {
                 if (!$this->isUnknownDiscordResourceError($e)) {
                     throw $e;
@@ -327,7 +322,7 @@ final class DiscordPostingService
 
         if ($scheduledEventId !== '') {
             try {
-                editExternalScheduledEvent($scheduledEventId, $event);
+                editScheduledEvent($scheduledEventId, $event);
                 $scheduledEventUrl = buildDiscordScheduledEventUrl($scheduledEventId);
                 $this->events->markScheduledEvent((int) $event['id'], $scheduledEventId);
                 return [$scheduledEventUrl, 'Updated native Discord event'];
@@ -339,7 +334,7 @@ final class DiscordPostingService
             }
         }
 
-        $scheduled = createExternalScheduledEvent($event);
+        $scheduled = createScheduledEvent($event);
         $newScheduledEventId = (string) ($scheduled['id'] ?? '');
         if ($newScheduledEventId === '') {
             return ['', 'Native Discord event was not created'];
@@ -388,6 +383,242 @@ final class DiscordPostingService
         }
 
         return $results;
+    }
+
+    private function cleanupExpiredVoiceChannels(): array
+    {
+        $results = [];
+        $todayRange = dayRangeFromDate(null);
+        $scanStartUtc = $todayRange['day_start_utc'];
+        $scanEndUtc = (new DateTimeImmutable($todayRange['day_end_utc'], utcTimezone()))->modify('+2 days')->format('Y-m-d H:i:s');
+
+        foreach ($this->events->getForWeek($scanStartUtc, $scanEndUtc) as $event) {
+            $voiceChannelId = trim((string) ($event['discord_voice_channel_id'] ?? ''));
+            if ($voiceChannelId === '') {
+                continue;
+            }
+            if (!$this->hasEventEnded($event)) {
+                continue;
+            }
+
+            $subscribers = $this->getScheduledEventSubscriberIds($event);
+            if ($this->isAnyTrackedUserStillInVoiceChannel($voiceChannelId, $subscribers)) {
+                continue;
+            }
+
+            try {
+                deleteDiscordChannel($voiceChannelId);
+                $results[] = [
+                    'scope' => 'day_of_events',
+                    'event_name' => (string) ($event['event_name'] ?? 'Event'),
+                    'status' => 'cleaned_up',
+                    'message' => 'Deleted finished event voice channel.',
+                ];
+            } catch (Throwable $e) {
+                if (!$this->isUnknownDiscordResourceError($e)) {
+                    throw $e;
+                }
+                $results[] = [
+                    'scope' => 'day_of_events',
+                    'event_name' => (string) ($event['event_name'] ?? 'Event'),
+                    'status' => 'cleaned_up',
+                    'message' => 'Finished event voice channel was already missing.',
+                ];
+            }
+
+            $this->events->clearVoiceChannelTracking((int) $event['id']);
+        }
+
+        return $results;
+    }
+
+    private function syncEventVoiceChannel(array $event): array
+    {
+        $voiceEnabled = (int) ($event['create_voice_chat_for_event'] ?? 0) === 1;
+        $voiceChannelId = trim((string) ($event['discord_voice_channel_id'] ?? ''));
+        $scheduledEventId = trim((string) ($event['discord_scheduled_event_id'] ?? ''));
+
+        if (!$voiceEnabled || (string) ($event['status'] ?? 'scheduled') === 'cancelled') {
+            if ($voiceChannelId !== '') {
+                try {
+                    deleteDiscordChannel($voiceChannelId);
+                } catch (Throwable $e) {
+                    if (!$this->isUnknownDiscordResourceError($e)) {
+                        throw $e;
+                    }
+                }
+                $this->events->clearVoiceChannelTracking((int) $event['id']);
+                return ['Removed event voice channel', true];
+            }
+            return ['', false];
+        }
+
+        if ($scheduledEventId === '') {
+            return ['Skipped event voice channel: scheduled event not available yet', false];
+        }
+
+        if (!$this->shouldVoiceChannelExist($event)) {
+            if ($voiceChannelId !== '' && $this->hasEventEnded($event)) {
+                $subscriberIds = $this->getScheduledEventSubscriberIds($event);
+                if (!$this->isAnyTrackedUserStillInVoiceChannel($voiceChannelId, $subscriberIds)) {
+                    try {
+                        deleteDiscordChannel($voiceChannelId);
+                    } catch (Throwable $e) {
+                        if (!$this->isUnknownDiscordResourceError($e)) {
+                            throw $e;
+                        }
+                    }
+                    $this->events->clearVoiceChannelTracking((int) $event['id']);
+                    return ['Removed event voice channel', true];
+                }
+                return ['Kept event voice channel open until everyone leaves', false];
+            }
+            return ['Waiting until voice channel window opens', false];
+        }
+
+        $subscriberIds = $this->getScheduledEventSubscriberIds($event);
+        if ($voiceChannelId === '') {
+            $channel = createGuildVoiceChannel(
+                $this->buildVoiceChannelName($event),
+                $this->buildBaseVoicePermissionOverwrites(),
+                $this->resolveVoiceCategoryId($event)
+            );
+            $voiceChannelId = trim((string) ($channel['id'] ?? ''));
+            if ($voiceChannelId === '') {
+                return ['Event voice channel was not created', false];
+            }
+            $this->events->markVoiceChannel((int) $event['id'], $voiceChannelId);
+            $this->syncVoiceChannelPermissions($voiceChannelId, $subscriberIds);
+            return ['Created event voice channel', true];
+        }
+
+        $this->syncVoiceChannelPermissions($voiceChannelId, $subscriberIds);
+        return ['Synced event voice channel permissions', false];
+    }
+
+    private function shouldVoiceChannelExist(array $event): bool
+    {
+        $startUtc = new DateTimeImmutable((string) $event['event_start_utc'], utcTimezone());
+        $leadMinutes = max(0, (int) appConfig()['discord']['event_voice_create_before_minutes']);
+        $createAtUtc = $startUtc->modify('-' . $leadMinutes . ' minutes');
+        $nowUtc = new DateTimeImmutable('now', utcTimezone());
+
+        return $nowUtc >= $createAtUtc;
+    }
+
+    private function buildVoiceChannelName(array $event): string
+    {
+        $base = trim((string) ($event['event_name'] ?? 'Event Voice'));
+        if ($base === '') {
+            $base = 'Event Voice';
+        }
+        return mb_substr($base, 0, 100);
+    }
+
+    private function buildBaseVoicePermissionOverwrites(): array
+    {
+        $guildId = trim((string) appConfig()['discord']['guild_id']);
+        return [[
+            'id' => $guildId,
+            'type' => 0,
+            'allow' => discordPermissionSum(['VIEW_CHANNEL', 'CONNECT']),
+            'deny' => discordPermissionSum(['SPEAK']),
+        ]];
+    }
+
+    private function resolveVoiceCategoryId(array $event): ?string
+    {
+        $configured = trim((string) appConfig()['discord']['event_voice_category_id']);
+        if ($configured !== '') {
+            return $configured;
+        }
+
+        $dailyChannelId = $this->resolveDailyChannelId($event);
+        if ($dailyChannelId === '') {
+            return null;
+        }
+
+        try {
+            $channel = fetchDiscordChannel($dailyChannelId);
+        } catch (Throwable $e) {
+            return null;
+        }
+
+        $parentId = trim((string) ($channel['parent_id'] ?? ''));
+        return $parentId !== '' ? $parentId : null;
+    }
+
+    private function getScheduledEventSubscriberIds(array $event): array
+    {
+        $scheduledEventId = trim((string) ($event['discord_scheduled_event_id'] ?? ''));
+        if ($scheduledEventId === '') {
+            return [];
+        }
+
+        try {
+            return fetchScheduledEventUsers($scheduledEventId);
+        } catch (Throwable $e) {
+            return [];
+        }
+    }
+
+    private function syncVoiceChannelPermissions(string $voiceChannelId, array $subscriberIds): void
+    {
+        $channel = fetchDiscordChannel($voiceChannelId);
+        $overwrites = [];
+        foreach ((array) ($channel['permission_overwrites'] ?? []) as $overwrite) {
+            if (!is_array($overwrite) || empty($overwrite['id'])) {
+                continue;
+            }
+            $overwrites[(string) $overwrite['id']] = $overwrite;
+        }
+
+        $guildId = trim((string) appConfig()['discord']['guild_id']);
+        editDiscordChannelPermissions($voiceChannelId, $guildId, '0', ['VIEW_CHANNEL', 'CONNECT'], ['SPEAK']);
+
+        $desiredUserIds = [];
+        foreach ($subscriberIds as $userId) {
+            $userId = trim((string) $userId);
+            if ($userId === '') {
+                continue;
+            }
+            $desiredUserIds[$userId] = true;
+            editDiscordChannelPermissions($voiceChannelId, $userId, '1', ['SPEAK'], []);
+        }
+
+        foreach ($overwrites as $overwriteId => $overwrite) {
+            if ($overwriteId === $guildId) {
+                continue;
+            }
+            if ((int) ($overwrite['type'] ?? -1) !== 1) {
+                continue;
+            }
+            if (isset($desiredUserIds[$overwriteId])) {
+                continue;
+            }
+            try {
+                deleteDiscordChannelPermission($voiceChannelId, $overwriteId);
+            } catch (Throwable $e) {
+                if (!$this->isUnknownDiscordResourceError($e)) {
+                    throw $e;
+                }
+            }
+        }
+    }
+
+    private function isAnyTrackedUserStillInVoiceChannel(string $voiceChannelId, array $userIds): bool
+    {
+        $guildId = trim((string) appConfig()['discord']['guild_id']);
+        foreach ($userIds as $userId) {
+            $state = getUserVoiceState($guildId, (string) $userId);
+            if (!is_array($state)) {
+                continue;
+            }
+            if ((string) ($state['channel_id'] ?? '') === $voiceChannelId) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private function hasEventEnded(array $event): bool
@@ -567,6 +798,9 @@ final class DiscordPostingService
 
         return str_contains($message, 'Unknown Message')
             || str_contains($message, 'Unknown Guild Scheduled Event')
+            || str_contains($message, 'Unknown Channel')
+            || str_contains($message, 'Unknown Overwrite')
+            || str_contains($message, '10003')
             || str_contains($message, '10008')
             || str_contains($message, '10070');
     }

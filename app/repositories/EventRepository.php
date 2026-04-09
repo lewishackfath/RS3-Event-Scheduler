@@ -139,10 +139,10 @@ final class EventRepository
             $stmt = db()->prepare(
                 'INSERT INTO clan_events (
                     clan_id, event_name, event_description, event_location, host_name, host_discord_user_id, event_start_utc,
-                    duration_minutes, image_url, discord_channel_id, is_active, is_recurring_weekly, recurring_until_utc, recurring_series_id
+                    duration_minutes, image_url, discord_channel_id, create_voice_chat_for_event, is_active, is_recurring_weekly, recurring_until_utc, recurring_series_id
                 ) VALUES (
                     :clan_id, :event_name, :event_description, :event_location, :host_name, :host_discord_user_id, :event_start_utc,
-                    :duration_minutes, :image_url, :discord_channel_id, :is_active, :is_recurring_weekly, :recurring_until_utc, :recurring_series_id
+                    :duration_minutes, :image_url, :discord_channel_id, :create_voice_chat_for_event, :is_active, :is_recurring_weekly, :recurring_until_utc, :recurring_series_id
                 )'
             );
 
@@ -157,6 +157,7 @@ final class EventRepository
                 'duration_minutes' => $data['duration_minutes'] !== '' ? (int) $data['duration_minutes'] : null,
                 'image_url' => $data['image_url'],
                 'discord_channel_id' => $data['discord_channel_id'],
+                'create_voice_chat_for_event' => $data['create_voice_chat_for_event'] ?? 0,
                 'is_active' => $data['is_active'],
                 'is_recurring_weekly' => $data['is_recurring_weekly'],
                 'recurring_until_utc' => $data['recurring_until_utc'],
@@ -166,10 +167,10 @@ final class EventRepository
             $stmt = db()->prepare(
                 'INSERT INTO clan_events (
                     clan_id, event_name, event_description, event_location, host_name, host_discord_user_id, event_start_utc,
-                    duration_minutes, image_url, discord_channel_id, is_active, is_recurring_weekly, recurring_until_utc
+                    duration_minutes, image_url, discord_channel_id, create_voice_chat_for_event, is_active, is_recurring_weekly, recurring_until_utc
                 ) VALUES (
                     :clan_id, :event_name, :event_description, :event_location, :host_name, :host_discord_user_id, :event_start_utc,
-                    :duration_minutes, :image_url, :discord_channel_id, :is_active, :is_recurring_weekly, :recurring_until_utc
+                    :duration_minutes, :image_url, :discord_channel_id, :create_voice_chat_for_event, :is_active, :is_recurring_weekly, :recurring_until_utc
                 )'
             );
 
@@ -184,6 +185,7 @@ final class EventRepository
                 'duration_minutes' => $data['duration_minutes'] !== '' ? (int) $data['duration_minutes'] : null,
                 'image_url' => $data['image_url'],
                 'discord_channel_id' => $data['discord_channel_id'],
+                'create_voice_chat_for_event' => $data['create_voice_chat_for_event'] ?? 0,
                 'is_active' => $data['is_active'],
                 'is_recurring_weekly' => $data['is_recurring_weekly'],
                 'recurring_until_utc' => $data['recurring_until_utc'],
@@ -210,6 +212,7 @@ final class EventRepository
                     duration_minutes = :duration_minutes,
                     image_url = :image_url,
                     discord_channel_id = :discord_channel_id,
+                    create_voice_chat_for_event = :create_voice_chat_for_event,
                     is_active = :is_active,
                     is_recurring_weekly = :is_recurring_weekly,
                     recurring_until_utc = :recurring_until_utc,
@@ -229,6 +232,7 @@ final class EventRepository
                 'duration_minutes' => $data['duration_minutes'] !== '' ? (int) $data['duration_minutes'] : null,
                 'image_url' => $data['image_url'],
                 'discord_channel_id' => $data['discord_channel_id'],
+                'create_voice_chat_for_event' => $data['create_voice_chat_for_event'] ?? 0,
                 'is_active' => $data['is_active'],
                 'is_recurring_weekly' => $data['is_recurring_weekly'],
                 'recurring_until_utc' => $data['recurring_until_utc'],
@@ -246,6 +250,7 @@ final class EventRepository
                     duration_minutes = :duration_minutes,
                     image_url = :image_url,
                     discord_channel_id = :discord_channel_id,
+                    create_voice_chat_for_event = :create_voice_chat_for_event,
                     is_active = :is_active,
                     is_recurring_weekly = :is_recurring_weekly,
                     recurring_until_utc = :recurring_until_utc
@@ -264,6 +269,7 @@ final class EventRepository
                 'duration_minutes' => $data['duration_minutes'] !== '' ? (int) $data['duration_minutes'] : null,
                 'image_url' => $data['image_url'],
                 'discord_channel_id' => $data['discord_channel_id'],
+                'create_voice_chat_for_event' => $data['create_voice_chat_for_event'] ?? 0,
                 'is_active' => $data['is_active'],
                 'is_recurring_weekly' => $data['is_recurring_weekly'],
                 'recurring_until_utc' => $data['recurring_until_utc'],
@@ -305,7 +311,9 @@ final class EventRepository
                  discord_daily_message_id = NULL,
                  discord_daily_posted_at_utc = NULL,
                  discord_scheduled_event_id = NULL,
-                 discord_scheduled_event_created_at_utc = NULL
+                 discord_scheduled_event_created_at_utc = NULL,
+                 discord_voice_channel_id = NULL,
+                 discord_voice_channel_created_at_utc = NULL
              WHERE id = :id AND clan_id = :clan_id'
         );
         $stmt->execute([
@@ -520,6 +528,35 @@ final class EventRepository
             'id' => $eventId,
             'clan_id' => currentClanId(),
             'scheduled_event_id' => $scheduledEventId,
+        ]);
+    }
+
+    public function markVoiceChannel(int $eventId, string $channelId): void
+    {
+        $stmt = db()->prepare(
+            'UPDATE clan_events
+             SET discord_voice_channel_id = :channel_id,
+                 discord_voice_channel_created_at_utc = UTC_TIMESTAMP()
+             WHERE id = :id AND clan_id = :clan_id'
+        );
+        $stmt->execute([
+            'id' => $eventId,
+            'clan_id' => currentClanId(),
+            'channel_id' => $channelId,
+        ]);
+    }
+
+    public function clearVoiceChannelTracking(int $eventId): void
+    {
+        $stmt = db()->prepare(
+            'UPDATE clan_events
+             SET discord_voice_channel_id = NULL,
+                 discord_voice_channel_created_at_utc = NULL
+             WHERE id = :id AND clan_id = :clan_id'
+        );
+        $stmt->execute([
+            'id' => $eventId,
+            'clan_id' => currentClanId(),
         ]);
     }
 

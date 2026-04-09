@@ -106,6 +106,9 @@ function runDatabaseBootstrap(bool $verbose = false): void
                 discord_daily_posted_at_utc DATETIME NULL,
                 discord_scheduled_event_id VARCHAR(32) NULL,
                 discord_scheduled_event_created_at_utc DATETIME NULL,
+                create_voice_chat_for_event TINYINT(1) NOT NULL DEFAULT 0,
+                discord_voice_channel_id VARCHAR(32) NULL,
+                discord_voice_channel_created_at_utc DATETIME NULL,
                 created_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 CONSTRAINT fk_clan_events_clan FOREIGN KEY (clan_id) REFERENCES clans(id) ON DELETE CASCADE
@@ -134,7 +137,10 @@ function runDatabaseBootstrap(bool $verbose = false): void
             'discord_daily_posted_at_utc' => 'ALTER TABLE clan_events ADD COLUMN discord_daily_posted_at_utc DATETIME NULL AFTER discord_daily_message_id',
             'discord_scheduled_event_id' => 'ALTER TABLE clan_events ADD COLUMN discord_scheduled_event_id VARCHAR(32) NULL AFTER discord_daily_posted_at_utc',
             'discord_scheduled_event_created_at_utc' => 'ALTER TABLE clan_events ADD COLUMN discord_scheduled_event_created_at_utc DATETIME NULL AFTER discord_scheduled_event_id',
-            'created_at_utc' => 'ALTER TABLE clan_events ADD COLUMN created_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER discord_scheduled_event_created_at_utc',
+            'create_voice_chat_for_event' => 'ALTER TABLE clan_events ADD COLUMN create_voice_chat_for_event TINYINT(1) NOT NULL DEFAULT 0 AFTER discord_scheduled_event_created_at_utc',
+            'discord_voice_channel_id' => 'ALTER TABLE clan_events ADD COLUMN discord_voice_channel_id VARCHAR(32) NULL AFTER create_voice_chat_for_event',
+            'discord_voice_channel_created_at_utc' => 'ALTER TABLE clan_events ADD COLUMN discord_voice_channel_created_at_utc DATETIME NULL AFTER discord_voice_channel_id',
+            'created_at_utc' => 'ALTER TABLE clan_events ADD COLUMN created_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER discord_voice_channel_created_at_utc',
             'updated_at_utc' => 'ALTER TABLE clan_events ADD COLUMN updated_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at_utc',
         ];
 

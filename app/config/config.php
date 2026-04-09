@@ -64,6 +64,8 @@ function appConfig(): array
             'enable_scheduled_events' => (bool) env('DISCORD_ENABLE_SCHEDULED_EVENTS', true),
             'event_location_default' => (string) env('DISCORD_EVENT_LOCATION_DEFAULT', 'RuneScape - In Game'),
             'default_event_duration_minutes' => (int) env('DISCORD_DEFAULT_EVENT_DURATION_MINUTES', 60),
+            'event_voice_category_id' => (string) env('DISCORD_EVENT_VOICE_CATEGORY_ID', ''),
+            'event_voice_create_before_minutes' => (int) env('DISCORD_EVENT_VOICE_CREATE_BEFORE_MINUTES', 30),
         ],
         'discord_oauth' => [
             'client_id' => (string) env('DISCORD_CLIENT_ID', ''),

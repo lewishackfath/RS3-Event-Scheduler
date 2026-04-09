@@ -44,6 +44,7 @@ final class EventService
             'image_url' => trim((string) ($input['image_url'] ?? '')),
             'discord_channel_id' => trim((string) ($input['discord_channel_id'] ?? appConfig()['clan']['default_discord_channel_id'] ?? '')),
             'preferred_roles' => $this->normalisePreferredRoles(is_array($input['preferred_roles'] ?? null) ? $input['preferred_roles'] : []),
+            'create_voice_chat_for_event' => isset($input['create_voice_chat_for_event']) ? 1 : 0,
             'is_active' => isset($input['is_active']) ? 1 : 0,
             'is_recurring_weekly' => $isRecurringWeekly,
             'recurring_until_utc' => $isRecurringWeekly === 1

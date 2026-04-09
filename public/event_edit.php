@@ -32,6 +32,7 @@ $formValues = [
     'event_location' => $event['event_location'] ?? '',
     'image_url' => $event['image_url'],
     'event_description' => $event['event_description'],
+    'create_voice_chat_for_event' => (int) ($event['create_voice_chat_for_event'] ?? 0),
     'is_active' => (int) $event['is_active'],
     'is_recurring_weekly' => (int) ($event['is_recurring_weekly'] ?? 0),
     'recurring_until_date' => $recurringUntilDate,

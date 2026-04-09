@@ -17,6 +17,7 @@ $formValues = [
     'event_location' => '',
     'image_url' => '',
     'event_description' => '',
+    'create_voice_chat_for_event' => 0,
     'is_active' => 1,
     'is_recurring_weekly' => 0,
     'recurring_until_date' => '',
