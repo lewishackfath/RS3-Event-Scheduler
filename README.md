@@ -36,19 +36,14 @@ A lightweight PHP web app for managing a weekly clan event schedule and posting 
 2. Update the database, clan, branding, bot, and Discord OAuth values
 3. Set `DISCORD_GUILD_ID` to the server for this clan instance
 4. Set `ADMIN_ROLE_IDS` to one or more role IDs that should be allowed into the app
-5. Set the weekly summary and daily event channel IDs
-6. Run the bootstrap:
-
-```bash
-php setup/db_bootstrap.php
-```
-
-7. Point your web root at the `public` folder
+5. Optionally set `ADMIN_USER_IDS` to one or more Discord user IDs that should always be allowed into the app
+6. Set the weekly summary and daily event channel IDs
+7. Run the bootstrap:
 
 ## Notes
 
 - The public schedule page stays visible without login.
-- A user is allowed in only if their logged-in Discord account holds one of the configured roles in `DISCORD_GUILD_ID`.
+- A user is allowed in if their logged-in Discord account holds one of the configured roles in `DISCORD_GUILD_ID`, or their user ID is listed in `ADMIN_USER_IDS`.
 - Recommended OAuth scopes: `identify guilds.members.read`
 - All event times are entered in the clan timezone and stored in UTC.
 - Discord local time rendering is handled through Discord timestamps.

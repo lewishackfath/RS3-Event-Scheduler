@@ -21,6 +21,11 @@ function appConfig(): array
         explode(',', (string) env('ADMIN_ROLE_IDS', ''))
     ), static fn ($value) => $value !== ''));
 
+    $adminUserIds = array_values(array_filter(array_map(
+        static fn ($value) => trim((string) $value),
+        explode(',', (string) env('ADMIN_USER_IDS', ''))
+    ), static fn ($value) => $value !== ''));
+
     $config = [
         'app' => [
             'name' => (string) env('APP_NAME', 'Clan Event Scheduler'),
@@ -67,6 +72,7 @@ function appConfig(): array
             'scope' => (string) env('DISCORD_OAUTH_SCOPE', 'identify guilds.members.read'),
             'guild_id' => (string) env('DISCORD_GUILD_ID', ''),
             'admin_role_ids' => $adminRoleIds,
+            'admin_user_ids' => $adminUserIds,
         ],
     ];
 

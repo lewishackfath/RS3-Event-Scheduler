@@ -16,7 +16,7 @@ function isDiscordAuthConfigured(): bool
         && trim((string) ($cfg['client_secret'] ?? '')) !== ''
         && trim((string) ($cfg['redirect_uri'] ?? '')) !== ''
         && trim((string) ($cfg['guild_id'] ?? '')) !== ''
-        && !empty($cfg['admin_role_ids']);
+        && (!empty($cfg['admin_role_ids']) || !empty($cfg['admin_user_ids']));
 }
 
 function authBaseUrl(): string
@@ -44,6 +44,17 @@ function authorisedRoleIds(): array
     return array_values(array_map('strval', discordOauthConfig()['admin_role_ids'] ?? []));
 }
 
+function authorisedUserIds(): array
+{
+    return array_values(array_map('strval', discordOauthConfig()['admin_user_ids'] ?? []));
+}
+
+function userIsDirectlyAuthorised(array $discordUser): bool
+{
+    $discordUserId = (string) ($discordUser['id'] ?? '');
+    return $discordUserId !== '' && in_array($discordUserId, authorisedUserIds(), true);
+}
+
 function memberHasRequiredRole(array $member): bool
 {
     $memberRoles = array_map('strval', (array) ($member['roles'] ?? []));
@@ -52,6 +63,11 @@ function memberHasRequiredRole(array $member): bool
     }
 
     return count(array_intersect($memberRoles, authorisedRoleIds())) > 0;
+}
+
+function userCanAccessApp(array $discordUser, array $member): bool
+{
+    return userIsDirectlyAuthorised($discordUser) || memberHasRequiredRole($member);
 }
 
 function setAuthenticatedUser(array $discordUser, array $member): void

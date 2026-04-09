@@ -26,9 +26,9 @@ try {
     $discordUser = fetchDiscordUser($accessToken);
     $member = fetchDiscordCurrentUserGuildMember($accessToken, authGuildId());
 
-    if (!memberHasRequiredRole($member)) {
+    if (!userCanAccessApp($discordUser, $member)) {
         logoutUser();
-        throw new RuntimeException('Your Discord account does not have one of the required roles for this app.');
+        throw new RuntimeException('Your Discord account does not have one of the required admin roles or user overrides for this app.');
     }
 
     setAuthenticatedUser($discordUser, $member);
