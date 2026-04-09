@@ -6,21 +6,21 @@ function renderHeader(string $title): void
     $brand = branding();
     $bgValue = trim((string) ($brand['background_image_url'] ?? '')) !== ''
         ? 'url(' . e((string) $brand['background_image_url']) . ')'
-        : 'linear-gradient(135deg,#1f2937,#111827)';
+        : 'none';
     $user = function_exists('currentUser') ? currentUser() : null;
     $currentPage = basename((string) ($_SERVER['PHP_SELF'] ?? 'index.php'));
 
     echo '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">';
     echo '<title>' . e($title) . ' - ' . e(appConfig()['app']['name']) . '</title>';
     echo '<link rel="stylesheet" href="assets/css/app.css">';
-    echo '</head><body style="--hero-background:' . $bgValue . ';">';
+    echo '</head><body style="--page-background-image:' . $bgValue . ';">';
     echo '<div class="hero"><div class="hero-inner">';
     echo '<div class="hero-left">';
     if (($brand['logo_url'] ?? '') !== '') {
         echo '<img class="logo" src="' . e((string) $brand['logo_url']) . '" alt="' . e(currentClanName()) . '">';
     }
     echo '<div class="hero-brand">';
-    echo '<div>'; 
+    echo '<div>';
     echo '<h1 class="hero-title">' . e(appConfig()['app']['name']) . '</h1>';
     echo '<div class="hero-subtitle">' . e(currentClanName()) . '</div>';
     echo '</div>';
@@ -47,6 +47,7 @@ function renderHeader(string $title): void
     echo '</div>';
 
     echo '</div></div>';
+    echo '<div class="page-background">';
     echo '<div class="wrap">';
 
     $flash = flashMessage();
