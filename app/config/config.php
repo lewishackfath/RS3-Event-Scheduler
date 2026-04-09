@@ -66,6 +66,7 @@ function appConfig(): array
             'default_event_duration_minutes' => (int) env('DISCORD_DEFAULT_EVENT_DURATION_MINUTES', 60),
             'event_voice_category_id' => (string) env('DISCORD_EVENT_VOICE_CATEGORY_ID', ''),
             'event_voice_create_before_minutes' => (int) env('DISCORD_EVENT_VOICE_CREATE_BEFORE_MINUTES', 30),
+            'event_voice_delete_after_end_minutes' => (int) env('DISCORD_EVENT_VOICE_DELETE_AFTER_END_MINUTES', 60),
         ],
         'discord_oauth' => [
             'client_id' => (string) env('DISCORD_CLIENT_ID', ''),

@@ -388,41 +388,51 @@ final class DiscordPostingService
     private function cleanupExpiredVoiceChannels(): array
     {
         $results = [];
-        $todayRange = dayRangeFromDate(null);
-        $scanStartUtc = $todayRange['day_start_utc'];
-        $scanEndUtc = (new DateTimeImmutable($todayRange['day_end_utc'], utcTimezone()))->modify('+2 days')->format('Y-m-d H:i:s');
+        $stmt = db()->prepare(
+            'SELECT *
+               FROM clan_events
+              WHERE clan_id = :clan_id
+                AND is_active = 1
+                AND create_voice_chat_for_event = 1
+                AND discord_voice_channel_id IS NOT NULL
+                AND discord_voice_channel_id <> ""
+                AND status <> "cancelled"'
+        );
+        $stmt->execute(['clan_id' => currentClanId()]);
 
-        foreach ($this->events->getForWeek($scanStartUtc, $scanEndUtc) as $event) {
+        $rows = $stmt->fetchAll() ?: [];
+        $deleteAfterMinutes = max(0, (int) appConfig()['discord']['event_voice_delete_after_end_minutes']);
+        $nowUtc = new DateTimeImmutable('now', utcTimezone());
+
+        foreach ($rows as $event) {
+            $eventName = (string) ($event['event_name'] ?? 'Event');
             $voiceChannelId = trim((string) ($event['discord_voice_channel_id'] ?? ''));
             if ($voiceChannelId === '') {
                 continue;
             }
-            if (!$this->hasEventEnded($event)) {
-                continue;
-            }
 
-            $subscribers = $this->getScheduledEventSubscriberIds($event);
-            if ($this->isAnyTrackedUserStillInVoiceChannel($voiceChannelId, $subscribers)) {
+            $deleteAtUtc = $this->getEventVoiceDeleteAtUtc($event, $deleteAfterMinutes);
+            if ($deleteAtUtc > $nowUtc) {
                 continue;
             }
 
             try {
                 deleteDiscordChannel($voiceChannelId);
                 $results[] = [
-                    'scope' => 'day_of_events',
-                    'event_name' => (string) ($event['event_name'] ?? 'Event'),
+                    'scope' => 'voice_channel',
+                    'event_name' => $eventName,
                     'status' => 'cleaned_up',
-                    'message' => 'Deleted finished event voice channel.',
+                    'message' => 'Deleted event voice channel after the post-event grace period.',
                 ];
             } catch (Throwable $e) {
                 if (!$this->isUnknownDiscordResourceError($e)) {
                     throw $e;
                 }
                 $results[] = [
-                    'scope' => 'day_of_events',
-                    'event_name' => (string) ($event['event_name'] ?? 'Event'),
+                    'scope' => 'voice_channel',
+                    'event_name' => $eventName,
                     'status' => 'cleaned_up',
-                    'message' => 'Finished event voice channel was already missing.',
+                    'message' => 'Event voice channel was already missing after the post-event grace period.',
                 ];
             }
 
@@ -459,19 +469,8 @@ final class DiscordPostingService
 
         if (!$this->shouldVoiceChannelExist($event)) {
             if ($voiceChannelId !== '' && $this->hasEventEnded($event)) {
-                $subscriberIds = $this->getScheduledEventSubscriberIds($event);
-                if (!$this->isAnyTrackedUserStillInVoiceChannel($voiceChannelId, $subscriberIds)) {
-                    try {
-                        deleteDiscordChannel($voiceChannelId);
-                    } catch (Throwable $e) {
-                        if (!$this->isUnknownDiscordResourceError($e)) {
-                            throw $e;
-                        }
-                    }
-                    $this->events->clearVoiceChannelTracking((int) $event['id']);
-                    return ['Removed event voice channel', true];
-                }
-                return ['Kept event voice channel open until everyone leaves', false];
+                $deleteAfterMinutes = max(0, (int) appConfig()['discord']['event_voice_delete_after_end_minutes']);
+                return ['Kept event voice channel open until ' . $deleteAfterMinutes . ' minutes after the event ends', false];
             }
             return ['Waiting until voice channel window opens', false];
         }
@@ -632,6 +631,19 @@ final class DiscordPostingService
             ->modify('+' . $durationMinutes . ' minutes');
 
         return $endUtc <= new DateTimeImmutable('now', utcTimezone());
+    }
+
+
+    private function getEventVoiceDeleteAtUtc(array $event, int $deleteAfterMinutes): DateTimeImmutable
+    {
+        $durationMinutes = (int) ($event['duration_minutes'] ?? 0);
+        if ($durationMinutes <= 0) {
+            $durationMinutes = max(1, (int) appConfig()['discord']['default_event_duration_minutes']);
+        }
+
+        return (new DateTimeImmutable((string) $event['event_start_utc'], utcTimezone()))
+            ->modify('+' . $durationMinutes . ' minutes')
+            ->modify('+' . max(0, $deleteAfterMinutes) . ' minutes');
     }
 
     private function resolveDailyChannelId(array $event): string
