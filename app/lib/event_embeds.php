@@ -34,6 +34,7 @@ function buildEventEmbed(array $event): array
     $brand = branding();
     $timestamp = discordUnixTimestamp($event['event_start_utc']);
     $utc = new DateTimeImmutable($event['event_start_utc'], new DateTimeZone('UTC'));
+    $local = utcToClanLocal((string) $event['event_start_utc']);
     $thumbUrl = eventDisplayImageUrl($event);
     $preferredRolesText = formatPreferredRolesForDisplay((array) ($event['preferred_roles'] ?? []));
 
@@ -41,24 +42,33 @@ function buildEventEmbed(array $event): array
         ? $event['host_name']
         : 'TBC';
 
+    $location = trim((string) ($event['event_location'] ?? '')) !== ''
+        ? (string) $event['event_location']
+        : (string) (appConfig()['discord']['event_location_default'] ?? 'RuneScape - In Game');
+
+    $description = trim((string) ($event['event_description'] ?? ''));
+    if ($description === '') {
+        $description = 'No description provided.';
+    }
+
     $embed = [
         'title' => (string) $event['event_name'],
-        'description' => trim((string) ($event['event_description'] ?? '')),
         'color' => hexColourToInt((string) ($brand['embed_colour'] ?? '#5865F2')),
         'fields' => [
             [
-                'name' => 'Event Date/Time',
-                'value' => '<t:' . $timestamp . ':F>',
+                'name' => 'Event Date',
+                'value' => $local->format('l, j F Y'),
                 'inline' => false,
             ],
             [
-                'name' => 'Gametime',
-                'value' => $utc->format('D j M Y, H:i') . ' UTC',
+                'name' => 'Event Start Time ' . $local->format('T'),
+                'value' => '<t:' . $timestamp . ':t>' . "
+" . '(<t:' . $timestamp . ':R>)',
                 'inline' => true,
             ],
             [
-                'name' => 'Local Time',
-                'value' => '<t:' . $timestamp . ':f>' . "\n" . '(<t:' . $timestamp . ':R>)',
+                'name' => 'Game Time',
+                'value' => $utc->format('H:i') . ' UTC',
                 'inline' => true,
             ],
             [
@@ -67,8 +77,13 @@ function buildEventEmbed(array $event): array
                 'inline' => false,
             ],
             [
-                'name' => 'Location',
-                'value' => trim((string) ($event['event_location'] ?? '')) !== '' ? (string) $event['event_location'] : (string) (appConfig()['discord']['event_location_default'] ?? 'RuneScape - In Game'),
+                'name' => 'Event Location',
+                'value' => $location,
+                'inline' => false,
+            ],
+            [
+                'name' => 'Event Description',
+                'value' => $description,
                 'inline' => false,
             ],
         ],
@@ -80,7 +95,7 @@ function buildEventEmbed(array $event): array
 
     if ($preferredRolesText !== '') {
         $embed['fields'][] = [
-            'name' => 'Preferred Roles',
+            'name' => 'Roles',
             'value' => $preferredRolesText,
             'inline' => false,
         ];
@@ -100,6 +115,7 @@ function buildEventEmbed(array $event): array
 
     return $embed;
 }
+
 
 function buildWeeklySummaryEmbed(array $events, DateTimeImmutable $weekStartLocal): array
 {

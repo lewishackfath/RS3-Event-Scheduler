@@ -75,7 +75,7 @@ $renderEventDay = static function (string $dateKey, array $day, bool $isPastDay 
             </div>
             <?php if ($canManage): ?><a class="btn secondary" href="event_create.php?date=<?= e($dateKey) ?>">Add Event</a><?php endif; ?>
         </div>
-        <?php foreach ($day['events'] as $event): $local = utcToClanLocal($event['event_start_utc']); ?>
+        <?php foreach ($day['events'] as $event): $local = utcToClanLocal($event['event_start_utc']); $utc = new DateTimeImmutable($event['event_start_utc'], new DateTimeZone('UTC')); ?>
             <div class="event-card-row <?= $isPastDay ? 'is-past' : '' ?>">
                 <div class="event-card-image-wrap">
                     <?php $imageUrl = eventDisplayImageUrl($event); ?>
@@ -88,7 +88,8 @@ $renderEventDay = static function (string $dateKey, array $day, bool $isPastDay 
                 <div class="event-card-body">
                     <div class="event-card-header">
                         <div>
-                            <strong><?= e($event['event_name']) ?></strong><?php if (!empty($event['recurring_series_id'])): ?><span class="pill">Recurring</span><?php endif; ?>
+                            <div class="event-field-label">Event Name</div>
+                            <strong class="event-title"><?= e($event['event_name']) ?></strong><?php if (!empty($event['recurring_series_id'])): ?><span class="pill">Recurring</span><?php endif; ?>
                             <?php if (!empty($event['is_recurring_weekly'])): ?>
                                 <span class="badge">Weekly</span>
                             <?php endif; ?>
@@ -110,18 +111,37 @@ $renderEventDay = static function (string $dateKey, array $day, bool $isPastDay 
                         </div>
                         <?php endif; ?>
                     </div>
-                    <div class="event-meta-grid">
-                        <div><span class="muted">Event Date/Time:</span> <?= e($local->format('D j M Y, g:i A')) ?></div>
-                        <div><span class="muted">Gametime:</span> <?= e((new DateTimeImmutable($event['event_start_utc'], new DateTimeZone('UTC')))->format('D j M Y, H:i')) ?> UTC</div>
-                        <div><span class="muted">Event Host:</span> <?= e($event['host_name'] ?: 'TBC') ?></div>
-                        <div><span class="muted">Location:</span> <?= e(($event['event_location'] ?? '') !== '' ? $event['event_location'] : (appConfig()['discord']['event_location_default'] ?? 'RuneScape - In Game')) ?></div>
+                    <div class="event-detail-list">
+                        <div class="event-detail-item">
+                            <div class="event-field-label">Event Date</div>
+                            <div class="event-field-value"><?= e($local->format('l, j F Y')) ?></div>
+                        </div>
+                        <div class="event-detail-item event-time-row">
+                            <div>
+                                <div class="event-field-label">Event Start Time <?= e($local->format('T')) ?></div>
+                                <div class="event-field-value"><?= e($local->format('g:i A')) ?></div>
+                            </div>
+                            <div>
+                                <div class="event-field-label">Game Time</div>
+                                <div class="event-field-value"><?= e($utc->format('H:i')) ?> UTC</div>
+                            </div>
+                        </div>
+                        <div class="event-detail-item">
+                            <div class="event-field-label">Event Host</div>
+                            <div class="event-field-value"><?= e($event['host_name'] ?: 'TBC') ?></div>
+                        </div>
+                        <div class="event-detail-item">
+                            <div class="event-field-label">Event Location</div>
+                            <div class="event-field-value"><?= e(($event['event_location'] ?? '') !== '' ? $event['event_location'] : (appConfig()['discord']['event_location_default'] ?? 'RuneScape - In Game')) ?></div>
+                        </div>
+                        <div class="event-detail-item">
+                            <div class="event-field-label">Event Description</div>
+                            <div class="event-field-value event-description"><?= !empty($event['event_description']) ? nl2br(e($event['event_description'])) : 'No description provided.' ?></div>
+                        </div>
                     </div>
                     <?php $preferredRoles = array_values(array_filter((array) ($event['preferred_roles'] ?? []), static function (array $role): bool {
                         return trim((string) ($role['role_name'] ?? '')) !== '' && trim((string) ($role['reaction_emoji'] ?? '')) !== '';
                     })); ?>
-                    <?php if (!empty($event['event_description'])): ?>
-                        <div class="event-description"><?= nl2br(e($event['event_description'])) ?></div>
-                    <?php endif; ?>
                     <?php if ($preferredRoles !== []): ?>
                         <div class="event-role-block">
                             <div class="event-role-label">Roles</div>
