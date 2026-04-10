@@ -124,7 +124,7 @@ $renderEventDay = static function (string $dateKey, array $day, bool $isPastDay 
                     <?php endif; ?>
                     <?php if ($preferredRoles !== []): ?>
                         <div class="event-role-block">
-                            <div class="event-role-label">Preferred roles</div>
+                            <div class="event-role-label">Roles</div>
                             <div class="event-role-list">
                                 <?php foreach ($preferredRoles as $role): ?>
                                     <span class="role-chip"><span class="role-chip-emoji"><?= e((string) $role['reaction_emoji']) ?></span><span class="role-chip-text"><?= e((string) $role['role_name']) ?></span></span>
