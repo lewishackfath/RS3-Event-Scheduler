@@ -26,27 +26,28 @@ function formatPreferredRolesForDisplay(array $roles): string
         $lines[] = $emoji . ' ' . $name;
     }
 
-    return $lines === [] ? '' : implode("\n", $lines);
+    return $lines === [] ? '' : implode("
+", $lines);
 }
 
-function formatDurationForDisplay(?int $minutes): string
+function formatEventDurationForDisplay(?int $minutes): string
 {
-    if ($minutes === null || $minutes <= 0) {
-        $minutes = max(1, (int) appConfig()['discord']['default_event_duration_minutes']);
+    $minutes = (int) $minutes;
+    if ($minutes <= 0) {
+        $minutes = max(1, (int) (appConfig()['discord']['default_event_duration_minutes'] ?? 60));
     }
 
     $hours = intdiv($minutes, 60);
-    $mins = $minutes % 60;
-    $parts = [];
+    $remainingMinutes = $minutes % 60;
 
+    if ($hours > 0 && $remainingMinutes > 0) {
+        return $hours . 'h ' . $remainingMinutes . 'm';
+    }
     if ($hours > 0) {
-        $parts[] = $hours . 'h';
-    }
-    if ($mins > 0) {
-        $parts[] = $mins . 'm';
+        return $hours . 'h';
     }
 
-    return $parts === [] ? $minutes . 'm' : implode(' ', $parts);
+    return $remainingMinutes . 'm';
 }
 
 function buildEventEmbed(array $event): array
@@ -54,10 +55,13 @@ function buildEventEmbed(array $event): array
     $brand = branding();
     $timestamp = discordUnixTimestamp($event['event_start_utc']);
     $utc = new DateTimeImmutable($event['event_start_utc'], new DateTimeZone('UTC'));
+    $local = utcToClanLocal($event['event_start_utc']);
     $imageUrl = eventDisplayImageUrl($event);
     $preferredRolesText = formatPreferredRolesForDisplay((array) ($event['preferred_roles'] ?? []));
-    $durationText = formatDurationForDisplay(isset($event['duration_minutes']) ? (int) $event['duration_minutes'] : null);
-    $timezoneLabel = (string) appConfig()['clan']['timezone'];
+    $durationText = formatEventDurationForDisplay(isset($event['duration_minutes']) ? (int) $event['duration_minutes'] : null);
+    $location = trim((string) ($event['event_location'] ?? '')) !== ''
+        ? (string) $event['event_location']
+        : (string) (appConfig()['discord']['event_location_default'] ?? 'RuneScape - In Game');
 
     $host = trim((string) ($event['host_name'] ?? '')) !== ''
         ? $event['host_name']
@@ -65,25 +69,19 @@ function buildEventEmbed(array $event): array
 
     $embed = [
         'title' => (string) $event['event_name'],
-        'description' => '',
         'color' => hexColourToInt((string) ($brand['embed_colour'] ?? '#5865F2')),
         'fields' => [
             [
                 'name' => 'Event Date',
-                'value' => '<t:' . $timestamp . ':D>',
+                'value' => $local->format('l, j F Y'),
                 'inline' => false,
             ],
             [
-                'name' => 'Event Start Time (' . $timezoneLabel . ')',
-                'value' => '<t:' . $timestamp . ':t>' . "
-" . '(<t:' . $timestamp . ':R>)',
-                'inline' => true,
-            ],
-            [
-                'name' => 'Game Time / Duration',
-                'value' => $utc->format('H:i') . ' UTC' . "
-" . $durationText,
-                'inline' => true,
+                'name' => 'Event Times',
+                'value' => $local->format('g:i A T') . "
+" . 'Game Time: ' . $utc->format('H:i') . ' UTC' . "
+" . 'Duration: ' . $durationText,
+                'inline' => false,
             ],
             [
                 'name' => 'Event Host',
@@ -92,12 +90,7 @@ function buildEventEmbed(array $event): array
             ],
             [
                 'name' => 'Event Location',
-                'value' => trim((string) ($event['event_location'] ?? '')) !== '' ? (string) $event['event_location'] : (string) (appConfig()['discord']['event_location_default'] ?? 'RuneScape - In Game'),
-                'inline' => false,
-            ],
-            [
-                'name' => 'Event Description',
-                'value' => trim((string) ($event['event_description'] ?? '')) !== '' ? trim((string) ($event['event_description'] ?? '')) : 'No description provided.',
+                'value' => $location,
                 'inline' => false,
             ],
         ],
@@ -111,6 +104,15 @@ function buildEventEmbed(array $event): array
         $embed['fields'][] = [
             'name' => 'Roles',
             'value' => $preferredRolesText,
+            'inline' => false,
+        ];
+    }
+
+    $description = trim((string) ($event['event_description'] ?? ''));
+    if ($description !== '') {
+        $embed['fields'][] = [
+            'name' => 'Event Description',
+            'value' => $description,
             'inline' => false,
         ];
     }
@@ -156,7 +158,8 @@ function buildWeeklySummaryEmbed(array $events, DateTimeImmutable $weekStartLoca
 
         $fields[] = [
             'name' => $day['label'],
-            'value' => implode("\n", $lines),
+            'value' => implode("
+", $lines),
             'inline' => false,
         ];
     }
