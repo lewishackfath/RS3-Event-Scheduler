@@ -29,46 +29,60 @@ function formatPreferredRolesForDisplay(array $roles): string
     return $lines === [] ? '' : implode("\n", $lines);
 }
 
+function formatDurationForDisplay(?int $minutes): string
+{
+    if ($minutes === null || $minutes <= 0) {
+        $minutes = max(1, (int) appConfig()['discord']['default_event_duration_minutes']);
+    }
+
+    $hours = intdiv($minutes, 60);
+    $mins = $minutes % 60;
+    $parts = [];
+
+    if ($hours > 0) {
+        $parts[] = $hours . 'h';
+    }
+    if ($mins > 0) {
+        $parts[] = $mins . 'm';
+    }
+
+    return $parts === [] ? $minutes . 'm' : implode(' ', $parts);
+}
+
 function buildEventEmbed(array $event): array
 {
     $brand = branding();
     $timestamp = discordUnixTimestamp($event['event_start_utc']);
     $utc = new DateTimeImmutable($event['event_start_utc'], new DateTimeZone('UTC'));
-    $local = utcToClanLocal((string) $event['event_start_utc']);
-    $thumbUrl = eventDisplayImageUrl($event);
+    $imageUrl = eventDisplayImageUrl($event);
     $preferredRolesText = formatPreferredRolesForDisplay((array) ($event['preferred_roles'] ?? []));
+    $durationText = formatDurationForDisplay(isset($event['duration_minutes']) ? (int) $event['duration_minutes'] : null);
+    $timezoneLabel = (string) appConfig()['clan']['timezone'];
 
     $host = trim((string) ($event['host_name'] ?? '')) !== ''
         ? $event['host_name']
         : 'TBC';
 
-    $location = trim((string) ($event['event_location'] ?? '')) !== ''
-        ? (string) $event['event_location']
-        : (string) (appConfig()['discord']['event_location_default'] ?? 'RuneScape - In Game');
-
-    $description = trim((string) ($event['event_description'] ?? ''));
-    if ($description === '') {
-        $description = 'No description provided.';
-    }
-
     $embed = [
         'title' => (string) $event['event_name'],
+        'description' => '',
         'color' => hexColourToInt((string) ($brand['embed_colour'] ?? '#5865F2')),
         'fields' => [
             [
                 'name' => 'Event Date',
-                'value' => $local->format('l, j F Y'),
+                'value' => '<t:' . $timestamp . ':D>',
                 'inline' => false,
             ],
             [
-                'name' => 'Event Start Time ' . $local->format('T'),
+                'name' => 'Event Start Time (' . $timezoneLabel . ')',
                 'value' => '<t:' . $timestamp . ':t>' . "
 " . '(<t:' . $timestamp . ':R>)',
                 'inline' => true,
             ],
             [
-                'name' => 'Game Time',
-                'value' => $utc->format('H:i') . ' UTC',
+                'name' => 'Game Time / Duration',
+                'value' => $utc->format('H:i') . ' UTC' . "
+" . $durationText,
                 'inline' => true,
             ],
             [
@@ -78,12 +92,12 @@ function buildEventEmbed(array $event): array
             ],
             [
                 'name' => 'Event Location',
-                'value' => $location,
+                'value' => trim((string) ($event['event_location'] ?? '')) !== '' ? (string) $event['event_location'] : (string) (appConfig()['discord']['event_location_default'] ?? 'RuneScape - In Game'),
                 'inline' => false,
             ],
             [
                 'name' => 'Event Description',
-                'value' => $description,
+                'value' => trim((string) ($event['event_description'] ?? '')) !== '' ? trim((string) ($event['event_description'] ?? '')) : 'No description provided.',
                 'inline' => false,
             ],
         ],
@@ -101,8 +115,8 @@ function buildEventEmbed(array $event): array
         ];
     }
 
-    if ($thumbUrl !== '') {
-        $embed['thumbnail'] = ['url' => $thumbUrl];
+    if ($imageUrl !== '') {
+        $embed['image'] = ['url' => $imageUrl];
     }
 
     if (($brand['logo_url'] ?? '') !== '') {
@@ -115,7 +129,6 @@ function buildEventEmbed(array $event): array
 
     return $embed;
 }
-
 
 function buildWeeklySummaryEmbed(array $events, DateTimeImmutable $weekStartLocal): array
 {

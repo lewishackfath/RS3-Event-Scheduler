@@ -8,24 +8,12 @@ $selectedDate = isset($_GET['date']) ? (string) $_GET['date'] : null;
 $range = weekRangeFromDate($selectedDate);
 $events = (new EventRepository())->getForWeek($range['week_start_utc'], $range['week_end_utc']);
 
-$groupedUpcoming = [];
-$groupedPast = [];
-$nowLocal = new DateTimeImmutable('now', clanTimezone());
+$grouped = [];
 foreach ($events as $event) {
     $local = utcToClanLocal($event['event_start_utc']);
     $key = $local->format('Y-m-d');
-    if ($local < $nowLocal) {
-        $groupedPast[$key]['label'] = $local->format('l, j F Y');
-        $groupedPast[$key]['events'][] = $event;
-    } else {
-        $groupedUpcoming[$key]['label'] = $local->format('l, j F Y');
-        $groupedUpcoming[$key]['events'][] = $event;
-    }
-}
-
-$pastEventCount = 0;
-foreach ($groupedPast as $pastDay) {
-    $pastEventCount += count($pastDay['events'] ?? []);
+    $grouped[$key]['label'] = $local->format('l, j F Y');
+    $grouped[$key]['events'][] = $event;
 }
 
 $prev = $range['week_start_local']->modify('-7 days')->format('Y-m-d');
@@ -35,6 +23,28 @@ $canManage = isAuthenticated();
 
 renderHeader('Weekly Schedule');
 ?>
+<?php
+function formatDurationLabel(?int $minutes): string
+{
+    if ($minutes === null || $minutes <= 0) {
+        $minutes = max(1, (int) appConfig()['discord']['default_event_duration_minutes']);
+    }
+
+    $hours = intdiv($minutes, 60);
+    $mins = $minutes % 60;
+    $parts = [];
+
+    if ($hours > 0) {
+        $parts[] = $hours . 'h';
+    }
+    if ($mins > 0) {
+        $parts[] = $mins . 'm';
+    }
+
+    return implode(' ', $parts) ?: ($minutes . 'm');
+}
+?>
+
 <div class="card mb-16">
     <div class="actions space-between">
         <div>
@@ -64,127 +74,74 @@ renderHeader('Weekly Schedule');
     </div>
 </div>
 
-<?php
-$renderEventDay = static function (string $dateKey, array $day, bool $isPastDay = false) use ($canManage): void {
-    ?>
-    <div class="card day-group <?= $isPastDay ? 'is-past-group' : '' ?>">
-        <div class="actions space-between mb-14">
-            <div>
-                <h3 class="page-title"><?= e($day['label']) ?></h3>
-                <div class="muted"><?= count($day['events']) ?> event<?= count($day['events']) === 1 ? '' : 's' ?><?= $isPastDay ? ' already completed' : ' scheduled' ?></div>
-            </div>
-            <?php if ($canManage): ?><a class="btn secondary" href="event_create.php?date=<?= e($dateKey) ?>">Add Event</a><?php endif; ?>
-        </div>
-        <?php foreach ($day['events'] as $event): $local = utcToClanLocal($event['event_start_utc']); $utc = new DateTimeImmutable($event['event_start_utc'], new DateTimeZone('UTC')); ?>
-            <div class="event-card-row <?= $isPastDay ? 'is-past' : '' ?>">
-                <div class="event-card-image-wrap">
-                    <?php $imageUrl = eventDisplayImageUrl($event); ?>
-                    <?php if ($imageUrl !== ''): ?>
-                        <img class="event-card-image" src="<?= e($imageUrl) ?>" alt="<?= e($event['event_name']) ?>">
-                    <?php else: ?>
-                        <div class="event-card-image placeholder">No image</div>
-                    <?php endif; ?>
-                </div>
-                <div class="event-card-body">
-                    <div class="event-card-header">
-                        <div>
-                            <div class="event-field-label">Event Name</div>
-                            <strong class="event-title"><?= e($event['event_name']) ?></strong><?php if (!empty($event['recurring_series_id'])): ?><span class="pill">Recurring</span><?php endif; ?>
-                            <?php if (!empty($event['is_recurring_weekly'])): ?>
-                                <span class="badge">Weekly</span>
-                            <?php endif; ?>
-                            <?php if ($isPastDay): ?>
-                                <span class="status-chip past">Past</span>
-                            <?php endif; ?>
-                            <?php if (($event['status'] ?? 'scheduled') === 'cancelled'): ?>
-                                <span class="status-chip cancelled">Cancelled</span>
-                            <?php endif; ?>
-                        </div>
-                        <?php if ($canManage): ?>
-                        <div class="actions">
-                            <a class="btn secondary" href="event_edit.php?id=<?= (int) $event['id'] ?>">Edit</a>
-                            <a class="btn secondary" href="sync_event.php?id=<?= (int) $event['id'] ?>" onclick="return confirm('Sync this event to Discord now?');">Sync</a>
-                            <?php if (($event['status'] ?? 'scheduled') !== 'cancelled'): ?>
-                                <a class="btn danger" href="cancel_event.php?id=<?= (int) $event['id'] ?>" onclick="return confirm('Cancel this event and update Discord?');">Cancel</a>
-                            <?php endif; ?>
-                            <a class="btn danger" href="event_delete.php?id=<?= (int) $event['id'] ?>" onclick="return confirm('Delete this event?');">Delete</a>
-                        </div>
-                        <?php endif; ?>
-                    </div>
-                    <div class="event-detail-list">
-                        <div class="event-detail-item">
-                            <div class="event-field-label">Event Date</div>
-                            <div class="event-field-value"><?= e($local->format('l, j F Y')) ?></div>
-                        </div>
-                        <div class="event-detail-item event-time-row">
-                            <div>
-                                <div class="event-field-label">Event Start Time <?= e($local->format('T')) ?></div>
-                                <div class="event-field-value"><?= e($local->format('g:i A')) ?></div>
-                            </div>
-                            <div>
-                                <div class="event-field-label">Game Time</div>
-                                <div class="event-field-value"><?= e($utc->format('H:i')) ?> UTC</div>
-                            </div>
-                        </div>
-                        <div class="event-detail-item">
-                            <div class="event-field-label">Event Host</div>
-                            <div class="event-field-value"><?= e($event['host_name'] ?: 'TBC') ?></div>
-                        </div>
-                        <div class="event-detail-item">
-                            <div class="event-field-label">Event Location</div>
-                            <div class="event-field-value"><?= e(($event['event_location'] ?? '') !== '' ? $event['event_location'] : (appConfig()['discord']['event_location_default'] ?? 'RuneScape - In Game')) ?></div>
-                        </div>
-                        <div class="event-detail-item">
-                            <div class="event-field-label">Event Description</div>
-                            <div class="event-field-value event-description"><?= !empty($event['event_description']) ? nl2br(e($event['event_description'])) : 'No description provided.' ?></div>
-                        </div>
-                    </div>
-                    <?php $preferredRoles = array_values(array_filter((array) ($event['preferred_roles'] ?? []), static function (array $role): bool {
-                        return trim((string) ($role['role_name'] ?? '')) !== '' && trim((string) ($role['reaction_emoji'] ?? '')) !== '';
-                    })); ?>
-                    <?php if ($preferredRoles !== []): ?>
-                        <div class="event-role-block">
-                            <div class="event-role-label">Roles</div>
-                            <div class="event-role-list">
-                                <?php foreach ($preferredRoles as $role): ?>
-                                    <span class="role-chip"><span class="role-chip-emoji"><?= e((string) $role['reaction_emoji']) ?></span><span class="role-chip-text"><?= e((string) $role['role_name']) ?></span></span>
-                                <?php endforeach; ?>
-                            </div>
-                        </div>
-                    <?php endif; ?>
-                </div>
-            </div>
-        <?php endforeach; ?>
-    </div>
-    <?php
-};
-?>
-
-<?php if (empty($groupedUpcoming) && empty($groupedPast)): ?>
+<?php if (empty($grouped)): ?>
     <div class="card">
         <p>No events scheduled for this week yet.</p>
     </div>
 <?php else: ?>
-    <?php if (!empty($groupedUpcoming)): ?>
-        <?php foreach ($groupedUpcoming as $dateKey => $day): ?>
-            <?php $renderEventDay($dateKey, $day, false); ?>
-        <?php endforeach; ?>
-    <?php else: ?>
-        <div class="card mb-24">
-            <p class="mb-0">There are no upcoming events left for this week.</p>
-        </div>
-    <?php endif; ?>
-
-    <?php if (!empty($groupedPast)): ?>
-        <details class="archive-panel">
-            <summary>Past events <span class="archive-panel-count">(<?= (int) $pastEventCount ?>)</span></summary>
-            <div class="archive-panel-body">
-                <?php foreach ($groupedPast as $dateKey => $day): ?>
-                    <?php $renderEventDay($dateKey, $day, true); ?>
-                <?php endforeach; ?>
+    <?php foreach ($grouped as $dateKey => $day): ?>
+        <div class="card day-group">
+            <div class="actions space-between mb-14">
+                <h3 class="page-title"><?= e($day['label']) ?></h3>
+                <?php if ($canManage): ?><a class="btn secondary" href="event_create.php?date=<?= e($dateKey) ?>">Add Event</a><?php endif; ?>
             </div>
-        </details>
-    <?php endif; ?>
+            <?php foreach ($day['events'] as $event):
+                $local = utcToClanLocal($event['event_start_utc']);
+                $utc = new DateTimeImmutable($event['event_start_utc'], new DateTimeZone('UTC'));
+                $imageUrl = eventDisplayImageUrl($event);
+                $durationLabel = formatDurationLabel(isset($event['duration_minutes']) ? (int) $event['duration_minutes'] : null);
+                $timezoneLabel = appConfig()['clan']['timezone'];
+                $roles = array_values(array_filter((array) ($event['preferred_roles'] ?? []), static function (array $role): bool {
+                    return trim((string) ($role['role_name'] ?? '')) !== '' && trim((string) ($role['reaction_emoji'] ?? '')) !== '';
+                }));
+            ?>
+                <div class="event-card-row">
+                    <?php if ($imageUrl !== ''): ?>
+                        <div class="event-card-image-wrap">
+                            <img class="event-card-image" src="<?= e($imageUrl) ?>" alt="<?= e($event['event_name']) ?>">
+                        </div>
+                    <?php endif; ?>
+                    <div class="event-card-body">
+                        <div class="event-card-header">
+                            <div>
+                                <strong><?= e($event['event_name']) ?></strong><?php if (!empty($event['recurring_series_id'])): ?><span class="pill">Recurring</span><?php endif; ?>
+                                <?php if (!empty($event['is_recurring_weekly'])): ?>
+                                    <span class="badge">Weekly</span>
+                                <?php endif; ?>
+                            </div>
+                            <?php if ($canManage): ?>
+                            <div class="actions">
+                                <a class="btn secondary" href="event_edit.php?id=<?= (int) $event['id'] ?>">Edit</a>
+                                <a class="btn secondary" href="sync_event.php?id=<?= (int) $event['id'] ?>" onclick="return confirm('Sync this event to Discord now?');">Sync</a>
+                                <?php if (($event['status'] ?? 'scheduled') !== 'cancelled'): ?>
+                                    <a class="btn danger" href="cancel_event.php?id=<?= (int) $event['id'] ?>" onclick="return confirm('Cancel this event and update Discord?');">Cancel</a>
+                                <?php endif; ?>
+                                <a class="btn danger" href="event_delete.php?id=<?= (int) $event['id'] ?>" onclick="return confirm('Delete this event?');">Delete</a>
+                            </div>
+                            <?php endif; ?>
+                        </div>
+                        <div class="event-detail-list stack-md">
+                            <div><span class="muted">Event Date:</span> <?= e($local->format('D j M Y')) ?></div>
+                            <div><span class="muted">Event Start Time <?= e('(' . $timezoneLabel . ')') ?>:</span> <?= e($local->format('g:i A')) ?> <span class="event-inline-separator">•</span> <span class="muted">Game Time:</span> <?= e($utc->format('H:i')) ?> UTC <span class="event-inline-separator">•</span> <span class="muted">Duration:</span> <?= e($durationLabel) ?></div>
+                            <div><span class="muted">Event Host:</span> <?= e($event['host_name'] ?: 'TBC') ?></div>
+                            <div><span class="muted">Event Location:</span> <?= e(($event['event_location'] ?? '') !== '' ? $event['event_location'] : (appConfig()['discord']['event_location_default'] ?? 'RuneScape - In Game')) ?></div>
+                            <div><span class="muted">Event Description:</span> <?= !empty($event['event_description']) ? nl2br(e($event['event_description'])) : '<span class="muted">No description provided.</span>' ?></div>
+                        </div>
+                        <?php if ($roles !== []): ?>
+                            <div class="event-roles">
+                                <div class="event-roles-label">Roles</div>
+                                <div class="event-role-list">
+                                    <?php foreach ($roles as $role): ?>
+                                        <span class="event-role-pill"><span class="role-emoji"><?= e((string) $role['reaction_emoji']) ?></span><span><?= e((string) $role['role_name']) ?></span></span>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+        </div>
+    <?php endforeach; ?>
 <?php endif; ?>
 <script>
 (function () {
