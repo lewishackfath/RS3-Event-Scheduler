@@ -13,7 +13,7 @@ function hexColourToInt(string $hex): int
     return hexdec($hex);
 }
 
-function formatPreferredRolesForDisplay(array $roles): string
+function formatPreferredRolesForDisplay(array $roles, string $separator = "\n"): string
 {
     $lines = [];
 
@@ -26,28 +26,26 @@ function formatPreferredRolesForDisplay(array $roles): string
         $lines[] = $emoji . ' ' . $name;
     }
 
-    return $lines === [] ? '' : implode("
-", $lines);
+    return $lines === [] ? '' : implode($separator, $lines);
 }
 
-function formatEventDurationForDisplay(?int $minutes): string
+function formatEventDurationLabel(array $event): string
 {
-    $minutes = (int) $minutes;
-    if ($minutes <= 0) {
-        $minutes = max(1, (int) (appConfig()['discord']['default_event_duration_minutes'] ?? 60));
+    $durationMinutes = (int) ($event['duration_minutes'] ?? 0);
+    if ($durationMinutes <= 0) {
+        $durationMinutes = max(1, (int) appConfig()['discord']['default_event_duration_minutes']);
     }
 
-    $hours = intdiv($minutes, 60);
-    $remainingMinutes = $minutes % 60;
+    $hours = intdiv($durationMinutes, 60);
+    $minutes = $durationMinutes % 60;
 
-    if ($hours > 0 && $remainingMinutes > 0) {
-        return $hours . 'h ' . $remainingMinutes . 'm';
+    if ($hours > 0 && $minutes > 0) {
+        return $hours . 'h ' . $minutes . 'm';
     }
     if ($hours > 0) {
         return $hours . 'h';
     }
-
-    return $remainingMinutes . 'm';
+    return $minutes . 'm';
 }
 
 function buildEventEmbed(array $event): array
@@ -55,17 +53,17 @@ function buildEventEmbed(array $event): array
     $brand = branding();
     $timestamp = discordUnixTimestamp($event['event_start_utc']);
     $utc = new DateTimeImmutable($event['event_start_utc'], new DateTimeZone('UTC'));
-    $local = utcToClanLocal($event['event_start_utc']);
-    $imageUrl = eventDisplayImageUrl($event);
-    $preferredRolesText = formatPreferredRolesForDisplay((array) ($event['preferred_roles'] ?? []));
-    $durationText = formatEventDurationForDisplay(isset($event['duration_minutes']) ? (int) $event['duration_minutes'] : null);
+    $local = utcToClanLocal((string) $event['event_start_utc']);
+    $thumbUrl = eventDisplayImageUrl($event);
+    $preferredRolesText = formatPreferredRolesForDisplay((array) ($event['preferred_roles'] ?? []), ' | ');
+
+    $host = trim((string) ($event['host_name'] ?? '')) !== ''
+        ? (string) $event['host_name']
+        : 'TBC';
+
     $location = trim((string) ($event['event_location'] ?? '')) !== ''
         ? (string) $event['event_location']
         : (string) (appConfig()['discord']['event_location_default'] ?? 'RuneScape - In Game');
-
-    $host = trim((string) ($event['host_name'] ?? '')) !== ''
-        ? $event['host_name']
-        : 'TBC';
 
     $embed = [
         'title' => (string) $event['event_name'],
@@ -77,10 +75,8 @@ function buildEventEmbed(array $event): array
                 'inline' => false,
             ],
             [
-                'name' => 'Event Times',
-                'value' => $local->format('g:i A T') . "
-" . 'Game Time: ' . $utc->format('H:i') . ' UTC' . "
-" . 'Duration: ' . $durationText,
+                'name' => 'Event Time',
+                'value' => '(' . clanTimezone()->getName() . ') <t:' . $timestamp . ':t> - (Game) ' . $utc->format('H:i') . ' UTC',
                 'inline' => false,
             ],
             [
@@ -117,8 +113,11 @@ function buildEventEmbed(array $event): array
         ];
     }
 
-    if ($imageUrl !== '') {
-        $embed['image'] = ['url' => $imageUrl];
+    // Keep duration visible without introducing another stacked field.
+    $embed['fields'][1]['value'] .= ' - Duration ' . formatEventDurationLabel($event);
+
+    if ($thumbUrl !== '') {
+        $embed['thumbnail'] = ['url' => $thumbUrl];
     }
 
     if (($brand['logo_url'] ?? '') !== '') {
@@ -158,8 +157,7 @@ function buildWeeklySummaryEmbed(array $events, DateTimeImmutable $weekStartLoca
 
         $fields[] = [
             'name' => $day['label'],
-            'value' => implode("
-", $lines),
+            'value' => implode("\n", $lines),
             'inline' => false,
         ];
     }
