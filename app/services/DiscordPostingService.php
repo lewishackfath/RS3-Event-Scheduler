@@ -443,7 +443,7 @@ final class DiscordPostingService
             }
 
             $deleteAtUtc = $this->getEventVoiceDeleteAtUtc($event, $deleteAfterMinutes);
-            $warningResult = $this->queueVoiceDeleteWarningIfDue($event, $deleteAtUtc, $nowUtc);
+            $warningResult = $this->sendVoiceDeleteWarningMessageIfDue($event, $deleteAtUtc, $nowUtc);
             if ($warningResult !== null) {
                 $results[] = $warningResult;
             }
@@ -531,7 +531,7 @@ final class DiscordPostingService
     }
 
 
-private function queueVoiceDeleteWarningIfDue(array $event, DateTimeImmutable $deleteAtUtc, DateTimeImmutable $nowUtc): ?array
+private function sendVoiceDeleteWarningMessageIfDue(array $event, DateTimeImmutable $deleteAtUtc, DateTimeImmutable $nowUtc): ?array
 {
     $warningBeforeMinutes = max(0, (int) appConfig()['discord']['event_voice_warning_before_delete_minutes']);
     if ($warningBeforeMinutes <= 0) {
@@ -552,45 +552,37 @@ private function queueVoiceDeleteWarningIfDue(array $event, DateTimeImmutable $d
         return null;
     }
 
-    $commandKey = sprintf(
-        'play_event_voice_delete_warning:%d:%s:%s',
-        (int) ($event['id'] ?? 0),
-        $voiceChannelId,
-        $deleteAtUtc->format('YmdHis')
-    );
+    $warningTimestamp = $deleteAtUtc->getTimestamp();
+    $minuteLabel = $warningBeforeMinutes === 1 ? 'minute' : 'minutes';
+    $message = sprintf('Chat will end in %d %s @ <t:%d:t>', $warningBeforeMinutes, $minuteLabel, $warningTimestamp);
 
-    $payload = [
-        'event_id' => (int) ($event['id'] ?? 0),
-        'clan_id' => currentClanId(),
-        'guild_id' => (string) appConfig()['discord']['guild_id'],
-        'channel_id' => $voiceChannelId,
-        'event_name' => (string) ($event['event_name'] ?? 'Event'),
-        'audio_file' => (string) env('VOICE_WARNING_AUDIO_FILE', 'assets/audio/event-delete-warning-placeholder.pcm'),
-        'delete_at_utc' => $deleteAtUtc->format('Y-m-d H:i:s'),
-        'warn_at_utc' => $warningAtUtc->format('Y-m-d H:i:s'),
-    ];
+    try {
+        postDiscordMessage($voiceChannelId, $message);
+    } catch (Throwable $e) {
+        if ($this->isUnknownDiscordResourceError($e)) {
+            return [
+                'scope' => 'voice_channel_warning',
+                'event_name' => (string) ($event['event_name'] ?? 'Event'),
+                'status' => 'skipped',
+                'message' => 'Skipped voice channel chat warning because the voice channel was already missing.',
+            ];
+        }
 
-    $enqueued = $this->events->enqueueBotCommand(
-        currentClanId(),
-        $commandKey,
-        'play_event_voice_delete_warning',
-        $payload,
-        $warningAtUtc->format('Y-m-d H:i:s'),
-        $deleteAtUtc->format('Y-m-d H:i:s'),
-        max(1, (int) appConfig()['discord']['event_voice_warning_max_attempts'])
-    );
-
-    if (!$enqueued) {
-        return null;
+        return [
+            'scope' => 'voice_channel_warning',
+            'event_name' => (string) ($event['event_name'] ?? 'Event'),
+            'status' => 'failed',
+            'message' => 'Failed to post voice channel chat warning: ' . $e->getMessage(),
+        ];
     }
 
-    $this->events->markVoiceWarningQueued((int) $event['id']);
+    $this->events->markVoiceWarningSent((int) $event['id']);
 
     return [
         'scope' => 'voice_channel_warning',
         'event_name' => (string) ($event['event_name'] ?? 'Event'),
-        'status' => 'queued',
-        'message' => 'Queued voice deletion warning for bot playback.',
+        'status' => 'posted',
+        'message' => 'Posted voice channel chat warning for scheduled deletion.',
     ];
 }
 

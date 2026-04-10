@@ -68,8 +68,6 @@ function appConfig(): array
             'event_voice_create_before_minutes' => (int) env('DISCORD_EVENT_VOICE_CREATE_BEFORE_MINUTES', 30),
             'event_voice_delete_after_end_minutes' => (int) env('DISCORD_EVENT_VOICE_DELETE_AFTER_END_MINUTES', 60),
             'event_voice_warning_before_delete_minutes' => (int) env('DISCORD_EVENT_VOICE_WARNING_BEFORE_DELETE_MINUTES', 15),
-            'event_voice_warning_retry_seconds' => (int) env('DISCORD_EVENT_VOICE_WARNING_RETRY_SECONDS', 60),
-            'event_voice_warning_max_attempts' => (int) env('DISCORD_EVENT_VOICE_WARNING_MAX_ATTEMPTS', 20),
         ],
         'discord_oauth' => [
             'client_id' => (string) env('DISCORD_CLIENT_ID', ''),

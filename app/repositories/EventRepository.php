@@ -552,7 +552,8 @@ final class EventRepository
         $stmt = db()->prepare(
             'UPDATE clan_events
              SET discord_voice_channel_id = NULL,
-                 discord_voice_channel_created_at_utc = NULL
+                 discord_voice_channel_created_at_utc = NULL,
+                 discord_voice_warning_queued_at_utc = NULL
              WHERE id = :id AND clan_id = :clan_id'
         );
         $stmt->execute([
@@ -562,7 +563,7 @@ final class EventRepository
     }
 
 
-public function markVoiceWarningQueued(int $eventId): void
+public function markVoiceWarningSent(int $eventId): void
 {
     $stmt = db()->prepare(
         'UPDATE clan_events
