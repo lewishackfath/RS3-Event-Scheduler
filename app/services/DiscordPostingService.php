@@ -690,7 +690,7 @@ private function queueVoiceDeleteWarningIfDue(array $event, DateTimeImmutable $d
         }
 
         foreach (array_keys($desiredUserIds) as $userId) {
-            editDiscordChannelPermissions($voiceChannelId, $userId, '1', ['SPEAK'], []);
+            editDiscordChannelPermissions($voiceChannelId, (string) $userId, '1', ['SPEAK'], []);
         }
 
         foreach ($overwrites as $overwriteId => $overwrite) {
