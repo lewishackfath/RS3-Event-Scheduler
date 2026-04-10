@@ -119,18 +119,18 @@ $renderEventDay = static function (string $dateKey, array $day, bool $isPastDay 
                     <?php $preferredRoles = array_values(array_filter((array) ($event['preferred_roles'] ?? []), static function (array $role): bool {
                         return trim((string) ($role['role_name'] ?? '')) !== '' && trim((string) ($role['reaction_emoji'] ?? '')) !== '';
                     })); ?>
+                    <?php if (!empty($event['event_description'])): ?>
+                        <div class="event-description"><?= nl2br(e($event['event_description'])) ?></div>
+                    <?php endif; ?>
                     <?php if ($preferredRoles !== []): ?>
                         <div class="event-role-block">
                             <div class="event-role-label">Preferred roles</div>
                             <div class="event-role-list">
                                 <?php foreach ($preferredRoles as $role): ?>
-                                    <span class="role-chip"><span class="role-chip-emoji"><?= e((string) $role['reaction_emoji']) ?></span><span><?= e((string) $role['role_name']) ?></span></span>
+                                    <span class="role-chip"><span class="role-chip-emoji"><?= e((string) $role['reaction_emoji']) ?></span><span class="role-chip-text"><?= e((string) $role['role_name']) ?></span></span>
                                 <?php endforeach; ?>
                             </div>
                         </div>
-                    <?php endif; ?>
-                    <?php if (!empty($event['event_description'])): ?>
-                        <div class="event-description"><?= nl2br(e($event['event_description'])) ?></div>
                     <?php endif; ?>
                 </div>
             </div>

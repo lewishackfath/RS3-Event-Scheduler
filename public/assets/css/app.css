@@ -183,11 +183,12 @@ label{display:block;margin-bottom:6px;font-weight:700}
     .page-background{min-height:calc(100vh - 260px)}
 }
 
-.event-role-block{margin-top:14px;padding-top:14px;border-top:1px solid rgba(148,163,184,.12)}
-.event-role-label{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#93c5fd;margin-bottom:10px}
-.event-role-list{display:flex;flex-wrap:wrap;gap:10px}
-.role-chip{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;background:linear-gradient(135deg,rgba(30,41,59,.95),rgba(15,23,42,.95));border:1px solid rgba(96,165,250,.22);box-shadow:inset 0 1px 0 rgba(255,255,255,.03),0 10px 20px rgba(2,6,23,.18);font-weight:700;color:#e2e8f0}
-.role-chip-emoji{font-size:16px;line-height:1}
+.event-role-block{margin-top:16px;padding:14px 16px;border:1px solid rgba(96,165,250,.16);border-radius:16px;background:linear-gradient(180deg,rgba(15,23,42,.72),rgba(11,18,32,.88));box-shadow:inset 0 1px 0 rgba(255,255,255,.02)}
+.event-role-label{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#93c5fd;margin-bottom:12px}
+.event-role-list{display:flex;flex-wrap:wrap;gap:12px}
+.role-chip{display:inline-flex;align-items:center;gap:10px;padding:10px 14px;border-radius:999px;background:linear-gradient(135deg,rgba(30,41,59,.98),rgba(15,23,42,.98));border:1px solid rgba(96,165,250,.22);box-shadow:inset 0 1px 0 rgba(255,255,255,.03),0 10px 20px rgba(2,6,23,.18);font-weight:700;color:#e2e8f0;min-height:42px}
+.role-chip-emoji{display:inline-flex;align-items:center;justify-content:center;min-width:22px;font-size:17px;line-height:1}
+.role-chip-text{line-height:1.2}
 .status-chip{display:inline-flex;align-items:center;margin-left:8px;padding:4px 8px;border-radius:999px;font-size:12px;font-weight:700;vertical-align:middle;border:1px solid rgba(255,255,255,.08)}
 .status-chip.past{background:rgba(71,85,105,.26);color:#cbd5e1}
 .status-chip.cancelled{background:rgba(127,29,29,.35);color:#fecaca;border-color:rgba(248,113,113,.24)}
@@ -201,7 +202,8 @@ label{display:block;margin-bottom:6px;font-weight:700}
 .archive-panel-count{color:#93c5fd}
 .archive-panel-body{padding:0 18px 18px}
 @media (max-width: 700px){
-    .event-role-list{gap:8px}
+    .event-role-block{padding:12px 14px}
+    .event-role-list{gap:10px}
     .role-chip{width:100%;justify-content:flex-start}
     .archive-panel summary{padding:16px}
     .archive-panel-body{padding:0 14px 14px}
