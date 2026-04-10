@@ -124,6 +124,37 @@ final class DiscordPostingService
         return [$this->syncSingleEvent($event, true)];
     }
 
+
+    public function cancelEventById(int $eventId): array
+    {
+        $event = $this->events->getById($eventId);
+        if ($event === null) {
+            return ['Event not found.'];
+        }
+
+        $this->events->updateStatus($eventId, 'cancelled');
+        $cancelledEvent = $this->events->getById($eventId) ?? $event;
+
+        $results = [];
+        foreach ($this->syncEventById($eventId) as $result) {
+            $message = trim((string) ($result['message'] ?? ''));
+            if ($message !== '') {
+                $results[] = $message;
+            }
+        }
+
+        foreach ($this->refreshWeeklySummariesForDates([weekStartDateFromUtc((string) $cancelledEvent['event_start_utc'])]) as $result) {
+            $message = trim((string) ($result['message'] ?? ''));
+            if ($message !== '') {
+                $results[] = $message;
+            }
+        }
+
+        array_unshift($results, 'Event cancelled');
+
+        return array_values(array_unique($results));
+    }
+
     public function deleteDiscordArtifactsForEvent(array $event): array
     {
         $results = [];
@@ -491,11 +522,11 @@ final class DiscordPostingService
                 return ['Event voice channel was not created', false];
             }
             $this->events->markVoiceChannel((int) $event['id'], $voiceChannelId);
-            $this->syncVoiceChannelPermissions($voiceChannelId, $subscriberIds);
+            $this->syncVoiceChannelPermissions($voiceChannelId, $subscriberIds, (string) ($event['host_discord_user_id'] ?? ''));
             return ['Created event voice channel', true];
         }
 
-        $this->syncVoiceChannelPermissions($voiceChannelId, $subscriberIds);
+        $this->syncVoiceChannelPermissions($voiceChannelId, $subscriberIds, (string) ($event['host_discord_user_id'] ?? ''));
         return ['Synced event voice channel permissions', false];
     }
 
@@ -629,7 +660,7 @@ private function queueVoiceDeleteWarningIfDue(array $event, DateTimeImmutable $d
         }
     }
 
-    private function syncVoiceChannelPermissions(string $voiceChannelId, array $subscriberIds): void
+    private function syncVoiceChannelPermissions(string $voiceChannelId, array $subscriberIds, ?string $hostDiscordUserId = null): void
     {
         $channel = fetchDiscordChannel($voiceChannelId);
         $overwrites = [];
@@ -644,12 +675,21 @@ private function queueVoiceDeleteWarningIfDue(array $event, DateTimeImmutable $d
         editDiscordChannelPermissions($voiceChannelId, $guildId, '0', ['VIEW_CHANNEL', 'CONNECT'], ['SPEAK']);
 
         $desiredUserIds = [];
+
+        $hostDiscordUserId = trim((string) $hostDiscordUserId);
+        if ($hostDiscordUserId !== '') {
+            $desiredUserIds[$hostDiscordUserId] = true;
+        }
+
         foreach ($subscriberIds as $userId) {
             $userId = trim((string) $userId);
             if ($userId === '') {
                 continue;
             }
             $desiredUserIds[$userId] = true;
+        }
+
+        foreach (array_keys($desiredUserIds) as $userId) {
             editDiscordChannelPermissions($voiceChannelId, $userId, '1', ['SPEAK'], []);
         }
 
