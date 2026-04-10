@@ -313,7 +313,8 @@ final class EventRepository
                  discord_scheduled_event_id = NULL,
                  discord_scheduled_event_created_at_utc = NULL,
                  discord_voice_channel_id = NULL,
-                 discord_voice_channel_created_at_utc = NULL
+                 discord_voice_channel_created_at_utc = NULL,
+                 discord_voice_warning_queued_at_utc = NULL
              WHERE id = :id AND clan_id = :clan_id'
         );
         $stmt->execute([
@@ -559,6 +560,51 @@ final class EventRepository
             'clan_id' => currentClanId(),
         ]);
     }
+
+
+public function markVoiceWarningQueued(int $eventId): void
+{
+    $stmt = db()->prepare(
+        'UPDATE clan_events
+         SET discord_voice_warning_queued_at_utc = UTC_TIMESTAMP()
+         WHERE id = :id AND clan_id = :clan_id'
+    );
+    $stmt->execute([
+        'id' => $eventId,
+        'clan_id' => currentClanId(),
+    ]);
+}
+
+public function enqueueBotCommand(
+    ?int $clanId,
+    string $commandKey,
+    string $commandType,
+    array $payload,
+    string $availableAtUtc,
+    ?string $expiresAtUtc,
+    int $maxAttempts = 20
+): bool {
+    $stmt = db()->prepare(
+        'INSERT IGNORE INTO bot_commands (
+            clan_id, command_key, command_type, status, payload_json, attempt_count, max_attempts,
+            available_at_utc, expires_at_utc, created_at_utc, updated_at_utc
+         ) VALUES (
+            :clan_id, :command_key, :command_type, "pending", :payload_json, 0, :max_attempts,
+            :available_at_utc, :expires_at_utc, UTC_TIMESTAMP(), UTC_TIMESTAMP()
+         )'
+    );
+
+    $stmt->bindValue(':clan_id', $clanId, $clanId === null ? PDO::PARAM_NULL : PDO::PARAM_INT);
+    $stmt->bindValue(':command_key', $commandKey);
+    $stmt->bindValue(':command_type', $commandType);
+    $stmt->bindValue(':payload_json', json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+    $stmt->bindValue(':max_attempts', $maxAttempts, PDO::PARAM_INT);
+    $stmt->bindValue(':available_at_utc', $availableAtUtc);
+    $stmt->bindValue(':expires_at_utc', $expiresAtUtc, $expiresAtUtc === null ? PDO::PARAM_NULL : PDO::PARAM_STR);
+    $stmt->execute();
+
+    return $stmt->rowCount() > 0;
+}
 
     public function getWeeklyPost(string $weekStartUtc): ?array
     {

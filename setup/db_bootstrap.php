@@ -109,6 +109,7 @@ function runDatabaseBootstrap(bool $verbose = false): void
                 create_voice_chat_for_event TINYINT(1) NOT NULL DEFAULT 0,
                 discord_voice_channel_id VARCHAR(32) NULL,
                 discord_voice_channel_created_at_utc DATETIME NULL,
+                discord_voice_warning_queued_at_utc DATETIME NULL,
                 created_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 CONSTRAINT fk_clan_events_clan FOREIGN KEY (clan_id) REFERENCES clans(id) ON DELETE CASCADE
@@ -140,7 +141,8 @@ function runDatabaseBootstrap(bool $verbose = false): void
             'create_voice_chat_for_event' => 'ALTER TABLE clan_events ADD COLUMN create_voice_chat_for_event TINYINT(1) NOT NULL DEFAULT 0 AFTER discord_scheduled_event_created_at_utc',
             'discord_voice_channel_id' => 'ALTER TABLE clan_events ADD COLUMN discord_voice_channel_id VARCHAR(32) NULL AFTER create_voice_chat_for_event',
             'discord_voice_channel_created_at_utc' => 'ALTER TABLE clan_events ADD COLUMN discord_voice_channel_created_at_utc DATETIME NULL AFTER discord_voice_channel_id',
-            'created_at_utc' => 'ALTER TABLE clan_events ADD COLUMN created_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER discord_voice_channel_created_at_utc',
+            'discord_voice_warning_queued_at_utc' => 'ALTER TABLE clan_events ADD COLUMN discord_voice_warning_queued_at_utc DATETIME NULL AFTER discord_voice_channel_created_at_utc',
+            'created_at_utc' => 'ALTER TABLE clan_events ADD COLUMN created_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER discord_voice_warning_queued_at_utc',
             'updated_at_utc' => 'ALTER TABLE clan_events ADD COLUMN updated_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at_utc',
         ];
 
@@ -176,6 +178,12 @@ function runDatabaseBootstrap(bool $verbose = false): void
         $pdo->exec('CREATE INDEX idx_clan_status_start ON clan_events (clan_id, status, event_start_utc)');
         $log('Created idx_clan_status_start index.');
     }
+
+    if (!indexExists($pdo, 'clan_events', 'idx_voice_channel_cleanup')) {
+        $pdo->exec('CREATE INDEX idx_voice_channel_cleanup ON clan_events (clan_id, create_voice_chat_for_event, discord_voice_channel_id, status, event_start_utc)');
+        $log('Created idx_voice_channel_cleanup index.');
+    }
+
 
     if (!tableExists($pdo, 'clan_event_roles')) {
         $pdo->exec(
@@ -251,6 +259,71 @@ function runDatabaseBootstrap(bool $verbose = false): void
         $pdo->exec('CREATE INDEX idx_clan_week ON discord_weekly_posts (clan_id, week_start_utc)');
         $log('Created idx_clan_week index.');
     }
+
+
+if (!tableExists($pdo, 'bot_commands')) {
+    $pdo->exec(
+        'CREATE TABLE bot_commands (
+            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            clan_id INT UNSIGNED NULL,
+            command_key VARCHAR(191) NULL,
+            command_type VARCHAR(100) NOT NULL,
+            status VARCHAR(20) NOT NULL DEFAULT "pending",
+            payload_json LONGTEXT NULL,
+            attempt_count INT UNSIGNED NOT NULL DEFAULT 0,
+            max_attempts INT UNSIGNED NOT NULL DEFAULT 20,
+            available_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            picked_up_at_utc DATETIME NULL,
+            completed_at_utc DATETIME NULL,
+            failed_at_utc DATETIME NULL,
+            expires_at_utc DATETIME NULL,
+            last_error TEXT NULL,
+            created_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+    );
+    $log('Created bot_commands table.');
+} else {
+    $requiredColumns = [
+        'clan_id' => 'ALTER TABLE bot_commands ADD COLUMN clan_id INT UNSIGNED NULL AFTER id',
+        'command_key' => 'ALTER TABLE bot_commands ADD COLUMN command_key VARCHAR(191) NULL AFTER clan_id',
+        'command_type' => 'ALTER TABLE bot_commands ADD COLUMN command_type VARCHAR(100) NOT NULL AFTER command_key',
+        'status' => 'ALTER TABLE bot_commands ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT "pending" AFTER command_type',
+        'payload_json' => 'ALTER TABLE bot_commands ADD COLUMN payload_json LONGTEXT NULL AFTER status',
+        'attempt_count' => 'ALTER TABLE bot_commands ADD COLUMN attempt_count INT UNSIGNED NOT NULL DEFAULT 0 AFTER payload_json',
+        'max_attempts' => 'ALTER TABLE bot_commands ADD COLUMN max_attempts INT UNSIGNED NOT NULL DEFAULT 20 AFTER attempt_count',
+        'available_at_utc' => 'ALTER TABLE bot_commands ADD COLUMN available_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER max_attempts',
+        'picked_up_at_utc' => 'ALTER TABLE bot_commands ADD COLUMN picked_up_at_utc DATETIME NULL AFTER available_at_utc',
+        'completed_at_utc' => 'ALTER TABLE bot_commands ADD COLUMN completed_at_utc DATETIME NULL AFTER picked_up_at_utc',
+        'failed_at_utc' => 'ALTER TABLE bot_commands ADD COLUMN failed_at_utc DATETIME NULL AFTER completed_at_utc',
+        'expires_at_utc' => 'ALTER TABLE bot_commands ADD COLUMN expires_at_utc DATETIME NULL AFTER failed_at_utc',
+        'last_error' => 'ALTER TABLE bot_commands ADD COLUMN last_error TEXT NULL AFTER expires_at_utc',
+        'created_at_utc' => 'ALTER TABLE bot_commands ADD COLUMN created_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER last_error',
+        'updated_at_utc' => 'ALTER TABLE bot_commands ADD COLUMN updated_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at_utc',
+    ];
+
+    foreach ($requiredColumns as $column => $sql) {
+        if (!columnExists($pdo, 'bot_commands', $column)) {
+            $pdo->exec($sql);
+            $log('Added bot_commands.' . $column . ' column.');
+        }
+    }
+}
+
+if (!indexExists($pdo, 'bot_commands', 'uniq_bot_commands_key')) {
+    $pdo->exec('CREATE UNIQUE INDEX uniq_bot_commands_key ON bot_commands (command_key)');
+    $log('Created uniq_bot_commands_key index.');
+}
+
+if (!indexExists($pdo, 'bot_commands', 'idx_bot_commands_poll')) {
+    $pdo->exec('CREATE INDEX idx_bot_commands_poll ON bot_commands (status, available_at_utc, command_type)');
+    $log('Created idx_bot_commands_poll index.');
+}
+
+if (!indexExists($pdo, 'bot_commands', 'idx_bot_commands_clan')) {
+    $pdo->exec('CREATE INDEX idx_bot_commands_clan ON bot_commands (clan_id, created_at_utc)');
+    $log('Created idx_bot_commands_clan index.');
+}
 
     $clanId = (int) env('CLAN_ID', 0);
     $clanName = (string) env('CLAN_NAME', 'Clan');
