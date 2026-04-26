@@ -59,6 +59,48 @@ final class DiscordPostingService
         return $results;
     }
 
+    private function syncWeeklySummaryDuringDiscordSync(?string $date, array $affectedWeeklyDates): array
+    {
+        $nowLocal = $date !== null && trim($date) !== ''
+            ? new DateTimeImmutable(trim($date) . ' 00:00:00', clanTimezone())
+            : new DateTimeImmutable('now', clanTimezone());
+
+        $todayLocal = $nowLocal->format('Y-m-d');
+        $results = [];
+        $createdOrUpdatedCurrentWeek = false;
+
+        if ($this->isMondayMidnightSyncWindow($nowLocal, $date)) {
+            $results = array_merge($results, $this->postOrUpdateWeeklySummaryForWeek($todayLocal, true));
+            $createdOrUpdatedCurrentWeek = true;
+        }
+
+        $refreshDates = array_values(array_filter(
+            array_unique($affectedWeeklyDates),
+            static fn (string $value): bool => trim($value) !== '' && (!$createdOrUpdatedCurrentWeek || $value !== $todayLocal)
+        ));
+
+        if ($refreshDates !== []) {
+            $results = array_merge($results, $this->refreshWeeklySummariesForDates($refreshDates));
+        }
+
+        return $results;
+    }
+
+    private function isMondayMidnightSyncWindow(DateTimeImmutable $nowLocal, ?string $date): bool
+    {
+        if ($nowLocal->format('N') !== '1') {
+            return false;
+        }
+
+        // A CLI date argument is treated as a manual/test run for that clan-local day.
+        // Normal cron runs must occur during the first minute of Monday in the clan timezone.
+        if ($date !== null && trim($date) !== '') {
+            return true;
+        }
+
+        return $nowLocal->format('H:i') === '00:00';
+    }
+
     public function syncPendingDiscordItemsForToday(?string $date = null): array
     {
         $range = dayRangeFromDate($date);
@@ -80,15 +122,13 @@ final class DiscordPostingService
                 'status' => 'skipped',
                 'message' => 'No events found for ' . $range['day_start_local']->format('j M Y') . '.',
             ];
-
-            return array_merge($results, $this->refreshWeeklySummariesForDates($affectedWeeklyDates));
+        } else {
+            foreach ($events as $event) {
+                $results[] = $this->syncSingleEvent($event, true);
+            }
         }
 
-        foreach ($events as $event) {
-            $results[] = $this->syncSingleEvent($event, true);
-        }
-
-        return array_merge($results, $this->refreshWeeklySummariesForDates($affectedWeeklyDates));
+        return array_merge($results, $this->syncWeeklySummaryDuringDiscordSync($date, $affectedWeeklyDates));
     }
 
     public function publishDayOfEvents(?string $date = null): array

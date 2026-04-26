@@ -18,7 +18,7 @@ try {
             echo '- ' . ($row['event_name'] ?? 'Event') . ': ' . ($row['message'] ?? '') . PHP_EOL;
         }
     } else {
-        echo PHP_EOL . 'No pending Discord sync items for today.' . PHP_EOL;
+        echo PHP_EOL . 'No pending Discord sync items for this run.' . PHP_EOL;
     }
 } catch (Throwable $e) {
     fwrite(STDERR, 'ERROR: ' . $e->getMessage() . PHP_EOL);

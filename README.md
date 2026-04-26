@@ -59,27 +59,28 @@ Open `post_schedule.php` in the web app to:
 - run the day-of event publisher manually
 - copy the cron URLs
 
-### Cron endpoints
+### Cron scripts
 
-The patch includes:
+The Discord sync cron now handles the weekly summary as well as daily Discord sync work.
 
-- `cron_weekly_summary.php`
-- `cron_daily_events.php`
+Use:
+
 - `cron_sync_discord.php`
 
-Both require a matching `CRON_TOKEN` value.
+Keep `cron_weekly_summary.php` only for manual/backwards-compatible one-off runs. It no longer needs to be scheduled separately.
 
-Example:
+Example server cron, run at clan-local midnight each day:
 
 ```text
-https://events.example.com/cron_weekly_summary.php?token=your-secret
-https://events.example.com/cron_daily_events.php?token=your-secret
+0 0 * * * /usr/local/bin/php /path/to/events/cron/cron_sync_discord.php >> /path/to/events/logs/discord_sync.log 2>&1
 ```
+
+The weekly summary is created or updated only when this sync runs at **00:00 on Monday morning in the clan timezone**. Existing weekly summary posts can still be refreshed by normal sync activity when related events or host names change.
 
 ## Suggested cron usage
 
-- Weekly summary: once per week on your preferred day and time
-- Day-of events: once per day shortly after midnight clan time
+- Discord sync: once per day at midnight in the clan timezone
+- Weekly summary: do not schedule separately; handled by `cron_sync_discord.php` on Monday at 00:00
 
 ## This patch adds
 
