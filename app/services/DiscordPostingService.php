@@ -62,8 +62,14 @@ final class DiscordPostingService
     public function syncPendingDiscordItemsForToday(?string $date = null): array
     {
         $range = dayRangeFromDate($date);
+        $hostSync = $this->syncDiscordHostNamesForUpcomingEvents();
+        $affectedWeeklyDates = array_values(array_unique(array_merge(
+            [$range['day_start_local']->format('Y-m-d')],
+            $hostSync['affected_dates']
+        )));
         $events = $this->events->getForDay($range['day_start_utc'], $range['day_end_utc']);
         $results = array_merge(
+            $hostSync['results'],
             $this->cleanupExpiredVoiceChannels(),
             $this->cleanupExpiredDailyPosts()
         );
@@ -75,21 +81,23 @@ final class DiscordPostingService
                 'message' => 'No events found for ' . $range['day_start_local']->format('j M Y') . '.',
             ];
 
-            return array_merge($results, $this->refreshWeeklySummariesForDates([$range['day_start_local']->format('Y-m-d')]));
+            return array_merge($results, $this->refreshWeeklySummariesForDates($affectedWeeklyDates));
         }
 
         foreach ($events as $event) {
             $results[] = $this->syncSingleEvent($event, true);
         }
 
-        return array_merge($results, $this->refreshWeeklySummariesForDates([$range['day_start_local']->format('Y-m-d')]));
+        return array_merge($results, $this->refreshWeeklySummariesForDates($affectedWeeklyDates));
     }
 
     public function publishDayOfEvents(?string $date = null): array
     {
         $range = dayRangeFromDate($date);
+        $hostSync = $this->syncDiscordHostNamesForUpcomingEvents();
         $events = $this->events->getForDay($range['day_start_utc'], $range['day_end_utc']);
         $results = array_merge(
+            $hostSync['results'],
             $this->cleanupExpiredVoiceChannels(),
             $this->cleanupExpiredDailyPosts()
         );
@@ -212,6 +220,60 @@ final class DiscordPostingService
         }
 
         return $results;
+    }
+
+    private function syncDiscordHostNamesForUpcomingEvents(): array
+    {
+        $guildId = trim((string) appConfig()['discord']['guild_id']);
+        if ($guildId === '') {
+            return ['results' => [], 'affected_dates' => []];
+        }
+
+        $events = $this->events->getActiveEventsWithHostDiscordIds();
+        if ($events === []) {
+            return ['results' => [], 'affected_dates' => []];
+        }
+
+        $memberCache = [];
+        $results = [];
+        $affectedDates = [];
+
+        foreach ($events as $event) {
+            $eventId = (int) ($event['id'] ?? 0);
+            $userId = trim((string) ($event['host_discord_user_id'] ?? ''));
+            if ($eventId <= 0 || $userId === '') {
+                continue;
+            }
+
+            if (!array_key_exists($userId, $memberCache)) {
+                $memberCache[$userId] = fetchGuildMember($guildId, $userId);
+            }
+
+            $member = $memberCache[$userId];
+            if (!is_array($member)) {
+                continue;
+            }
+
+            $newHostName = trim((string) ($member['display_name'] ?? ''));
+            $oldHostName = trim((string) ($event['host_name'] ?? ''));
+            if ($newHostName === '' || $newHostName === $oldHostName) {
+                continue;
+            }
+
+            $this->events->updateHostName($eventId, $newHostName);
+            $affectedDates[] = utcToClanLocal((string) $event['event_start_utc'])->format('Y-m-d');
+            $results[] = [
+                'scope' => 'host_name_sync',
+                'event_name' => (string) ($event['event_name'] ?? 'Event'),
+                'status' => 'updated',
+                'message' => 'Updated host name from ' . ($oldHostName !== '' ? $oldHostName : 'blank') . ' to ' . $newHostName . '.',
+            ];
+        }
+
+        return [
+            'results' => $results,
+            'affected_dates' => array_values(array_unique($affectedDates)),
+        ];
     }
 
     private function syncSingleEvent(array $event, bool $allowDailyCronCreation): array

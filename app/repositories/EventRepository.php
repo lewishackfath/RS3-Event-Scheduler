@@ -303,6 +303,54 @@ final class EventRepository
         ]);
     }
 
+
+    public function getActiveEventsWithHostDiscordIds(): array
+    {
+        $stmt = db()->prepare(
+            'SELECT * FROM clan_events
+             WHERE clan_id = :clan_id
+               AND is_active = 1
+               AND host_discord_user_id IS NOT NULL
+               AND host_discord_user_id <> ""
+               AND event_start_utc >= (UTC_TIMESTAMP() - INTERVAL 1 DAY)
+               AND status <> "cancelled"
+             ORDER BY event_start_utc ASC, id ASC'
+        );
+        $stmt->execute([
+            'clan_id' => currentClanId(),
+        ]);
+
+        $rows = $stmt->fetchAll() ?: [];
+        if (!$this->hasRecurringSeriesColumn()) {
+            foreach ($rows as &$row) {
+                $row['recurring_series_id'] = null;
+            }
+            unset($row);
+        }
+        foreach ($rows as &$row) {
+            if (!array_key_exists('status', $row)) {
+                $row['status'] = 'scheduled';
+            }
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    public function updateHostName(int $id, string $hostName): void
+    {
+        $stmt = db()->prepare(
+            'UPDATE clan_events
+             SET host_name = :host_name
+             WHERE id = :id AND clan_id = :clan_id'
+        );
+        $stmt->execute([
+            'id' => $id,
+            'clan_id' => currentClanId(),
+            'host_name' => $hostName,
+        ]);
+    }
+
     public function clearDiscordTracking(int $id): void
     {
         $stmt = db()->prepare(
