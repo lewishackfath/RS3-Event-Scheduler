@@ -163,24 +163,52 @@ final class EventService
             return;
         }
 
-        $deleteFromUtc = $scope === 'future'
+        $replaceFromUtc = $scope === 'future'
             ? (string) $event['event_start_utc']
             : null;
 
-        $repo->deleteSeriesEvents($seriesId, $deleteFromUtc);
+        $existingSeriesEvents = $repo->getSeriesEvents($seriesId, $replaceFromUtc);
 
         if ((int) $data['is_recurring_weekly'] === 1) {
             $reuseSeriesId = $scope === 'all' ? $seriesId : $this->newSeriesId();
-            foreach ($this->buildRecurringInstances($data, $reuseSeriesId) as $eventData) {
-                $repo->create($eventData);
-            }
+            $this->replaceSeriesEventsInPlace(
+                $repo,
+                $existingSeriesEvents,
+                $this->buildRecurringInstances($data, $reuseSeriesId)
+            );
             return;
         }
 
         $data['recurring_series_id'] = null;
         $data['is_recurring_weekly'] = 0;
         $data['recurring_until_utc'] = null;
-        $repo->create($data);
+        $this->replaceSeriesEventsInPlace($repo, $existingSeriesEvents, [$data]);
+    }
+
+    /**
+     * Replaces a recurring series without deleting and recreating rows unnecessarily.
+     *
+     * This preserves existing occurrence rows in chronological order so stored Discord
+     * daily message IDs, native Discord event IDs, voice channel IDs, and other sync
+     * metadata remain attached and can be edited instead of duplicated.
+     */
+    private function replaceSeriesEventsInPlace(EventRepository $repo, array $existingEvents, array $newEvents): void
+    {
+        $existingEvents = array_values($existingEvents);
+        $newEvents = array_values($newEvents);
+        $countToUpdate = min(count($existingEvents), count($newEvents));
+
+        for ($index = 0; $index < $countToUpdate; $index++) {
+            $repo->update((int) $existingEvents[$index]['id'], $newEvents[$index]);
+        }
+
+        for ($index = $countToUpdate; $index < count($newEvents); $index++) {
+            $repo->create($newEvents[$index]);
+        }
+
+        for ($index = $countToUpdate; $index < count($existingEvents); $index++) {
+            $repo->delete((int) $existingEvents[$index]['id']);
+        }
     }
 
     public function deleteEvent(EventRepository $repo, array $event, string $scope): int
