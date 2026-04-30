@@ -158,7 +158,7 @@ final class DiscordPostingService
         return $results;
     }
 
-    public function syncEventById(int $eventId): array
+    public function syncEventById(int $eventId, bool $createMissingDailyArtifacts = false): array
     {
         $event = $this->events->getById($eventId);
         if ($event === null) {
@@ -169,7 +169,10 @@ final class DiscordPostingService
             ]];
         }
 
-        return [$this->syncSingleEvent($event, true)];
+        // Manual event saves should refresh existing Discord artefacts only.
+        // Missing daily posts/native Discord events are created by the daily cron,
+        // otherwise saving a future event creates duplicate day-of content.
+        return [$this->syncSingleEvent($event, $createMissingDailyArtifacts)];
     }
 
 
