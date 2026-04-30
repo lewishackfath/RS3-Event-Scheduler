@@ -139,10 +139,10 @@ final class EventRepository
             $stmt = db()->prepare(
                 'INSERT INTO clan_events (
                     clan_id, event_name, event_description, event_location, host_name, host_discord_user_id, event_start_utc,
-                    duration_minutes, image_url, discord_channel_id, create_voice_chat_for_event, is_active, is_recurring_weekly, recurring_until_utc, recurring_series_id
+                    duration_minutes, image_url, discord_channel_id, discord_mention_role_id, create_voice_chat_for_event, is_active, is_recurring_weekly, recurring_until_utc, recurring_series_id
                 ) VALUES (
                     :clan_id, :event_name, :event_description, :event_location, :host_name, :host_discord_user_id, :event_start_utc,
-                    :duration_minutes, :image_url, :discord_channel_id, :create_voice_chat_for_event, :is_active, :is_recurring_weekly, :recurring_until_utc, :recurring_series_id
+                    :duration_minutes, :image_url, :discord_channel_id, :discord_mention_role_id, :create_voice_chat_for_event, :is_active, :is_recurring_weekly, :recurring_until_utc, :recurring_series_id
                 )'
             );
 
@@ -157,6 +157,7 @@ final class EventRepository
                 'duration_minutes' => $data['duration_minutes'] !== '' ? (int) $data['duration_minutes'] : null,
                 'image_url' => $data['image_url'],
                 'discord_channel_id' => $data['discord_channel_id'],
+                'discord_mention_role_id' => ($data['discord_mention_role_id'] ?? '') !== '' ? $data['discord_mention_role_id'] : null,
                 'create_voice_chat_for_event' => $data['create_voice_chat_for_event'] ?? 0,
                 'is_active' => $data['is_active'],
                 'is_recurring_weekly' => $data['is_recurring_weekly'],
@@ -167,10 +168,10 @@ final class EventRepository
             $stmt = db()->prepare(
                 'INSERT INTO clan_events (
                     clan_id, event_name, event_description, event_location, host_name, host_discord_user_id, event_start_utc,
-                    duration_minutes, image_url, discord_channel_id, create_voice_chat_for_event, is_active, is_recurring_weekly, recurring_until_utc
+                    duration_minutes, image_url, discord_channel_id, discord_mention_role_id, create_voice_chat_for_event, is_active, is_recurring_weekly, recurring_until_utc
                 ) VALUES (
                     :clan_id, :event_name, :event_description, :event_location, :host_name, :host_discord_user_id, :event_start_utc,
-                    :duration_minutes, :image_url, :discord_channel_id, :create_voice_chat_for_event, :is_active, :is_recurring_weekly, :recurring_until_utc
+                    :duration_minutes, :image_url, :discord_channel_id, :discord_mention_role_id, :create_voice_chat_for_event, :is_active, :is_recurring_weekly, :recurring_until_utc
                 )'
             );
 
@@ -185,6 +186,7 @@ final class EventRepository
                 'duration_minutes' => $data['duration_minutes'] !== '' ? (int) $data['duration_minutes'] : null,
                 'image_url' => $data['image_url'],
                 'discord_channel_id' => $data['discord_channel_id'],
+                'discord_mention_role_id' => ($data['discord_mention_role_id'] ?? '') !== '' ? $data['discord_mention_role_id'] : null,
                 'create_voice_chat_for_event' => $data['create_voice_chat_for_event'] ?? 0,
                 'is_active' => $data['is_active'],
                 'is_recurring_weekly' => $data['is_recurring_weekly'],
@@ -212,6 +214,7 @@ final class EventRepository
                     duration_minutes = :duration_minutes,
                     image_url = :image_url,
                     discord_channel_id = :discord_channel_id,
+                    discord_mention_role_id = :discord_mention_role_id,
                     create_voice_chat_for_event = :create_voice_chat_for_event,
                     is_active = :is_active,
                     is_recurring_weekly = :is_recurring_weekly,
@@ -232,6 +235,7 @@ final class EventRepository
                 'duration_minutes' => $data['duration_minutes'] !== '' ? (int) $data['duration_minutes'] : null,
                 'image_url' => $data['image_url'],
                 'discord_channel_id' => $data['discord_channel_id'],
+                'discord_mention_role_id' => ($data['discord_mention_role_id'] ?? '') !== '' ? $data['discord_mention_role_id'] : null,
                 'create_voice_chat_for_event' => $data['create_voice_chat_for_event'] ?? 0,
                 'is_active' => $data['is_active'],
                 'is_recurring_weekly' => $data['is_recurring_weekly'],
@@ -250,6 +254,7 @@ final class EventRepository
                     duration_minutes = :duration_minutes,
                     image_url = :image_url,
                     discord_channel_id = :discord_channel_id,
+                    discord_mention_role_id = :discord_mention_role_id,
                     create_voice_chat_for_event = :create_voice_chat_for_event,
                     is_active = :is_active,
                     is_recurring_weekly = :is_recurring_weekly,
@@ -269,6 +274,7 @@ final class EventRepository
                 'duration_minutes' => $data['duration_minutes'] !== '' ? (int) $data['duration_minutes'] : null,
                 'image_url' => $data['image_url'],
                 'discord_channel_id' => $data['discord_channel_id'],
+                'discord_mention_role_id' => ($data['discord_mention_role_id'] ?? '') !== '' ? $data['discord_mention_role_id'] : null,
                 'create_voice_chat_for_event' => $data['create_voice_chat_for_event'] ?? 0,
                 'is_active' => $data['is_active'],
                 'is_recurring_weekly' => $data['is_recurring_weekly'],

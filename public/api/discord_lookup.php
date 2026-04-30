@@ -21,6 +21,11 @@ try {
         exit;
     }
 
+    if ($type === 'roles') {
+        echo json_encode(['items' => fetchGuildRoles($guildId)], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
     http_response_code(400);
     echo json_encode(['error' => 'Invalid lookup type.']);
 } catch (Throwable $e) {

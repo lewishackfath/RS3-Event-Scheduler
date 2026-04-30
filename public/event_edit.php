@@ -29,6 +29,7 @@ $formValues = [
     'duration_minutes' => $event['duration_minutes'],
     'discord_channel_id' => $event['discord_channel_id'],
     'preferred_roles' => $event['preferred_roles'] ?? [],
+    'discord_mention_role_id' => $event['discord_mention_role_id'] ?? '',
     'event_location' => $event['event_location'] ?? '',
     'image_url' => $event['image_url'],
     'event_description' => $event['event_description'],

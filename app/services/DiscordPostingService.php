@@ -860,9 +860,23 @@ private function sendVoiceDeleteWarningMessageIfDue(array $event, DateTimeImmuta
         return $channelId;
     }
 
-    private function buildDailyMessageContent(string $scheduledEventUrl): string
+    private function buildDailyMessageContent(array $event, string $scheduledEventUrl): string
     {
-        return $scheduledEventUrl !== '' ? 'Discord event: ' . $scheduledEventUrl : '';
+        $lines = [];
+        $mentionRoleId = trim((string) ($event['discord_mention_role_id'] ?? ''));
+        if (preg_match('/^\d{15,32}$/', $mentionRoleId)) {
+            $lines[] = '<@&' . $mentionRoleId . '>';
+        }
+        if ($scheduledEventUrl !== '') {
+            $lines[] = 'Discord event: ' . $scheduledEventUrl;
+        }
+        return implode("\n", $lines);
+    }
+
+    private function dailyAllowedMentionRoleIds(array $event): array
+    {
+        $mentionRoleId = trim((string) ($event['discord_mention_role_id'] ?? ''));
+        return preg_match('/^\d{15,32}$/', $mentionRoleId) ? [$mentionRoleId] : [];
     }
 
     private function syncPreferredRoleReactions(string $channelId, string $messageId, array $roles): void
@@ -964,12 +978,13 @@ private function sendVoiceDeleteWarningMessageIfDue(array $event, DateTimeImmuta
             return 'Skipped daily post: no channel configured';
         }
 
-        $content = $this->buildDailyMessageContent($scheduledEventUrl);
+        $content = $this->buildDailyMessageContent($event, $scheduledEventUrl);
+        $allowedMentionRoleIds = $this->dailyAllowedMentionRoleIds($event);
         $embed = buildEventEmbed($event);
 
         if ($existingMessageId !== '' && $existingChannelId !== '' && $existingChannelId === $channelId) {
             try {
-                editDiscordMessage($existingChannelId, $existingMessageId, $content, [$embed]);
+                editDiscordMessage($existingChannelId, $existingMessageId, $content, [$embed], $allowedMentionRoleIds);
                 $this->syncPreferredRoleReactions($existingChannelId, $existingMessageId, (array) ($event['preferred_roles'] ?? []));
                 $this->events->markDailyPost((int) $event['id'], $existingChannelId, $existingMessageId);
                 return $mode === 'publish' ? 'Updated existing daily event embed' : 'Updated daily event embed';
@@ -994,7 +1009,7 @@ private function sendVoiceDeleteWarningMessageIfDue(array $event, DateTimeImmuta
             $this->events->clearDailyPostTracking((int) $event['id']);
         }
 
-        $response = postDiscordMessage($channelId, $content, [$embed]);
+        $response = postDiscordMessage($channelId, $content, [$embed], $allowedMentionRoleIds);
         $messageId = (string) ($response['id'] ?? '');
         if ($messageId === '') {
             return 'Daily event embed was not posted';

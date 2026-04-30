@@ -59,21 +59,35 @@ function discordApiRequest(string $method, string $endpoint, array $payload = []
     return is_array($decoded) ? $decoded : [];
 }
 
-function postDiscordMessage(string $channelId, string $content, array $embeds = []): array
+function buildAllowedMentionsPayload(array $roleIds = []): array
+{
+    $roleIds = array_values(array_unique(array_filter(array_map(static function ($roleId): string {
+        return trim((string) $roleId);
+    }, $roleIds), static fn (string $roleId): bool => preg_match('/^\d{15,32}$/', $roleId) === 1)));
+
+    $payload = ['parse' => []];
+    if ($roleIds !== []) {
+        $payload['roles'] = $roleIds;
+    }
+
+    return $payload;
+}
+
+function postDiscordMessage(string $channelId, string $content, array $embeds = [], array $allowedRoleIds = []): array
 {
     return discordApiRequest('POST', '/channels/' . $channelId . '/messages', [
         'content' => $content,
         'embeds' => $embeds,
-        'allowed_mentions' => ['parse' => []],
+        'allowed_mentions' => buildAllowedMentionsPayload($allowedRoleIds),
     ]);
 }
 
-function editDiscordMessage(string $channelId, string $messageId, string $content, array $embeds = []): array
+function editDiscordMessage(string $channelId, string $messageId, string $content, array $embeds = [], array $allowedRoleIds = []): array
 {
     return discordApiRequest('PATCH', '/channels/' . $channelId . '/messages/' . $messageId, [
         'content' => $content,
         'embeds' => $embeds,
-        'allowed_mentions' => ['parse' => []],
+        'allowed_mentions' => buildAllowedMentionsPayload($allowedRoleIds),
     ]);
 }
 
@@ -161,6 +175,42 @@ function fetchGuildChannels(string $guildId): array
             'name' => (string) $channel['name'],
             'type' => (int) $channel['type'],
             'parent_id' => isset($channel['parent_id']) ? (string) $channel['parent_id'] : null,
+        ];
+    }, $filtered);
+}
+
+function fetchGuildRoles(string $guildId): array
+{
+    $roles = discordApiRequest('GET', '/guilds/' . rawurlencode($guildId) . '/roles');
+    if (!is_array($roles)) {
+        return [];
+    }
+
+    $filtered = array_values(array_filter($roles, static function ($role): bool {
+        if (!is_array($role) || empty($role['id']) || empty($role['name'])) {
+            return false;
+        }
+        if (!empty($role['managed'])) {
+            return false;
+        }
+        return (string) $role['name'] !== '';
+    }));
+
+    usort($filtered, static function (array $a, array $b): int {
+        $posA = (int) ($a['position'] ?? 0);
+        $posB = (int) ($b['position'] ?? 0);
+        if ($posA === $posB) {
+            return strcasecmp((string) $a['name'], (string) $b['name']);
+        }
+        return $posB <=> $posA;
+    });
+
+    return array_map(static function (array $role): array {
+        return [
+            'id' => (string) $role['id'],
+            'name' => (string) $role['name'],
+            'mentionable' => !empty($role['mentionable']),
+            'position' => (int) ($role['position'] ?? 0),
         ];
     }, $filtered);
 }

@@ -8,6 +8,7 @@ $localTime = $formValues['event_time'] ?? '';
 $selectedHostName = (string) ($formValues['host_name'] ?? '');
 $selectedHostId = (string) ($formValues['host_discord_user_id'] ?? '');
 $selectedChannelId = (string) ($formValues['discord_channel_id'] ?? '');
+$selectedMentionRoleId = (string) ($formValues['discord_mention_role_id'] ?? '');
 $utcStartInput = (string) ($formValues['event_start_utc_input'] ?? '');
 $preferredRoles = is_array($formValues['preferred_roles'] ?? null) ? $formValues['preferred_roles'] : [];
 $currentPage = basename((string) ($_SERVER['PHP_SELF'] ?? ''));
@@ -45,6 +46,14 @@ $isSeriesEvent = $isEditPage && isset($event) && trim((string) ($event['recurrin
                     <option value="">Use default daily channel</option>
                 </select>
                 <div id="channel-picker-status" class="muted" style="margin-top:6px;">Loading available channels…</div><div class="muted" style="margin-top:6px;">Leave blank to use <code>DISCORD_DAILY_EVENT_CHANNEL_ID</code> from your .env file.</div>
+            </div>
+            <div class="field">
+                <label for="discord_mention_role_id">Role to Mention in Daily Listing</label>
+                <select id="discord_mention_role_id" name="discord_mention_role_id" data-selected-role="<?= e($selectedMentionRoleId) ?>">
+                    <option value="">No role mention</option>
+                </select>
+                <div id="role-picker-status" class="muted" style="margin-top:6px;">Loading available roles…</div>
+                <div class="muted" style="margin-top:6px;">Optional. The selected Discord role will be mentioned in the daily event listing.</div>
             </div>
             <div class="field field-full">
                 <label for="host_search">Event Host</label>
@@ -150,6 +159,8 @@ $isSeriesEvent = $isEditPage && isset($event) && trim((string) ($event['recurrin
     const recurringWrap = document.getElementById('recurring-until-wrap');
     const channelSelect = document.getElementById('discord_channel_id');
     const channelStatus = document.getElementById('channel-picker-status');
+    const roleSelect = document.getElementById('discord_mention_role_id');
+    const roleStatus = document.getElementById('role-picker-status');
     const eventDateInput = document.getElementById('event_date');
     const eventTimeInput = document.getElementById('event_time');
     const utcStartInput = document.getElementById('event_start_utc_input');
@@ -350,6 +361,28 @@ $isSeriesEvent = $isEditPage && isset($event) && trim((string) ($event['recurrin
         results.hidden = false;
     }
 
+    function loadMentionRoles() {
+        const selectedRole = roleSelect ? (roleSelect.getAttribute('data-selected-role') || '') : '';
+        fetch('api/discord_lookup.php?type=roles')
+            .then(function (response) { return response.json(); })
+            .then(function (data) {
+                if (!roleSelect) return;
+                const roles = Array.isArray(data.items) ? data.items : [];
+                roles.forEach(function (role) {
+                    if (!role || !role.id) return;
+                    const option = document.createElement('option');
+                    option.value = role.id;
+                    option.textContent = '@' + (role.name || role.id);
+                    if (String(role.id) === selectedRole) option.selected = true;
+                    roleSelect.appendChild(option);
+                });
+                if (roleStatus) roleStatus.textContent = roles.length ? 'Loaded ' + roles.length + ' roles.' : 'No selectable roles found.';
+            })
+            .catch(function () {
+                if (roleStatus) roleStatus.textContent = 'Could not load roles. You can still save the event without a role mention.';
+            });
+    }
+
     function loadChannels() {
         const selected = channelSelect.getAttribute('data-selected-channel') || '';
         fetch('api/discord_lookup.php?type=channels')
@@ -431,6 +464,11 @@ $isSeriesEvent = $isEditPage && isset($event) && trim((string) ($event['recurrin
         syncUtcFromLocal();
     }
 
-    loadChannels();
+    if (channelSelect) {
+        loadChannels();
+    }
+    if (roleSelect) {
+        loadMentionRoles();
+    }
 })();
 </script>

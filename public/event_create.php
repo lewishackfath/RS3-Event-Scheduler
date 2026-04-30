@@ -14,6 +14,7 @@ $formValues = [
     'duration_minutes' => '',
     'discord_channel_id' => '',
     'preferred_roles' => [],
+    'discord_mention_role_id' => '',
     'event_location' => '',
     'image_url' => '',
     'event_description' => '',
