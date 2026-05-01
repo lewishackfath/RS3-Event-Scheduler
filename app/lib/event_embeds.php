@@ -76,7 +76,9 @@ function buildEventEmbed(array $event): array
             ],
             [
                 'name' => 'Event Time',
-                'value' => '(' . clanTimezone()->getName() . ') <t:' . $timestamp . ':t> - (Game) ' . $utc->format('H:i') . ' UTC',
+                'value' => 'Local - <t:' . $timestamp . ':F>'
+                    . "\n" . 'Relative - <t:' . $timestamp . ':R>'
+                    . "\n" . 'Game - ' . $utc->format('H:i') . ' UTC',
                 'inline' => false,
             ],
             [
@@ -113,8 +115,8 @@ function buildEventEmbed(array $event): array
         ];
     }
 
-    // Keep duration visible without introducing another stacked field.
-    $embed['fields'][1]['value'] .= ' - Duration ' . formatEventDurationLabel($event);
+    // Keep duration visible in the Event Time field.
+    $embed['fields'][1]['value'] .= "\n" . 'Duration - ' . formatEventDurationLabel($event);
 
     if ($thumbUrl !== '') {
         $embed['thumbnail'] = ['url' => $thumbUrl];
