@@ -227,7 +227,7 @@ function buildWeeklySummaryEmbed(array $events, DateTimeImmutable $weekStartLoca
     ];
 
     if (($brand['header_image_url'] ?? '') !== '') {
-        $embed['image'] = ['url' => (string) $brand['header_image_url']];
+        //$embed['image'] = ['url' => (string) $brand['header_image_url']];
     }
 
     if (($brand['logo_url'] ?? '') !== '') {
