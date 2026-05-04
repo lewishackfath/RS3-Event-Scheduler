@@ -72,7 +72,7 @@ renderHeader('Discord Publishing');
             <input type="hidden" name="action" value="sync_discord">
             <div class="field">
                 <label for="date">Sync Date</label>
-                <input type="date" id="date" name="date" value="<?= e($dayRange['day_start_local']->format('Y-m-d')) ?>">
+                <input class="date-picker" type="date" id="date" name="date" value="<?= e($dayRange['day_start_local']->format('Y-m-d')) ?>" required>
             </div>
             <div class="actions">
                 <button class="btn" type="submit">Run Discord Sync</button>
@@ -94,6 +94,13 @@ renderHeader('Discord Publishing');
 <div class="grid">
     <div class="card">
         <h3 class="mt-0">Selected Day Status</h3>
+        <form method="get" class="mb-16">
+            <div class="field mb-10">
+                <label for="view-date">View Date</label>
+                <input class="date-picker" type="date" id="view-date" name="date" value="<?= e($dayRange['day_start_local']->format('Y-m-d')) ?>" onchange="this.form.submit()">
+            </div>
+            <noscript><button class="btn secondary" type="submit">View Date</button></noscript>
+        </form>
         <p class="muted mb-16"><?= e($dayRange['day_start_local']->format('l j F Y')) ?></p>
         <?php if (empty($todayEvents)): ?>
             <p>No events for this day.</p>
@@ -121,4 +128,13 @@ renderHeader('Discord Publishing');
         <?php endforeach; ?>
     </div>
 </div>
+<style>
+.date-picker {
+    min-height: 42px;
+    cursor: pointer;
+}
+.date-picker::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+}
+</style>
 <?php renderFooter(); ?>
