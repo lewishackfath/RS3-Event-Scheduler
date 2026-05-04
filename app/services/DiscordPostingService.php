@@ -401,6 +401,14 @@ final class DiscordPostingService
                     'message' => 'Updated existing weekly summary message.',
                 ]];
             } catch (Throwable $e) {
+                if ($this->isDiscordOldMessageEditLimitError($e)) {
+                    return [[
+                        'scope' => 'weekly_summary',
+                        'status' => 'skipped',
+                        'message' => 'Skipped weekly summary edit because Discord has temporarily limited edits on this older message. It will be retried by the next sync.',
+                    ]];
+                }
+
                 if (!$this->isUnknownDiscordResourceError($e)) {
                     throw $e;
                 }
@@ -989,6 +997,13 @@ private function sendVoiceDeleteWarningMessageIfDue(array $event, DateTimeImmuta
                 $this->events->clearDailyPostTracking((int) $event['id']);
                 return 'Updated daily event embed to ended state';
             } catch (Throwable $e) {
+                if ($this->isDiscordOldMessageEditLimitError($e)) {
+                    // Discord limits repeated edits to messages older than one hour.
+                    // Clear tracking so the cron does not keep retrying and fatal-looping.
+                    $this->events->clearDailyPostTracking((int) $event['id']);
+                    return 'Skipped ended daily post edit: Discord old-message edit limit reached';
+                }
+
                 if (!$this->isUnknownDiscordResourceError($e)) {
                     throw $e;
                 }
@@ -1013,6 +1028,10 @@ private function sendVoiceDeleteWarningMessageIfDue(array $event, DateTimeImmuta
                 $this->events->markDailyPost((int) $event['id'], $existingChannelId, $existingMessageId);
                 return $mode === 'publish' ? 'Updated existing daily event embed' : 'Updated daily event embed';
             } catch (Throwable $e) {
+                if ($this->isDiscordOldMessageEditLimitError($e)) {
+                    return 'Skipped daily event edit: Discord old-message edit limit reached';
+                }
+
                 if (!$this->isUnknownDiscordResourceError($e)) {
                     throw $e;
                 }
@@ -1043,6 +1062,14 @@ private function sendVoiceDeleteWarningMessageIfDue(array $event, DateTimeImmuta
         $this->syncPreferredRoleReactions($channelId, $messageId, (array) ($event['preferred_roles'] ?? []));
 
         return 'Posted daily event embed';
+    }
+
+    private function isDiscordOldMessageEditLimitError(Throwable $e): bool
+    {
+        $message = $e->getMessage();
+
+        return str_contains($message, 'Maximum number of edits to messages older than 1 hour reached')
+            || str_contains($message, '30046');
     }
 
     private function isUnknownDiscordResourceError(Throwable $e): bool
