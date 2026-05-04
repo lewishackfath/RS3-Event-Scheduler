@@ -436,8 +436,17 @@ final class DiscordPostingService
         $scheduledEventId = trim((string) ($event['discord_scheduled_event_id'] ?? ''));
         $scheduledEventUrl = '';
         $eventStartUtc = new DateTimeImmutable((string) $event['event_start_utc'], utcTimezone());
+        $durationMinutes = (int) ($event['duration_minutes'] ?? 0);
+        if ($durationMinutes <= 0) {
+            $durationMinutes = max(1, (int) appConfig()['discord']['default_event_duration_minutes']);
+        }
+        $eventEndUtc = $eventStartUtc->modify('+' . $durationMinutes . ' minutes');
         $nowUtc = new DateTimeImmutable('now', utcTimezone());
-        $canExist = $eventStartUtc > $nowUtc && (string) ($event['status'] ?? 'scheduled') !== 'cancelled';
+
+        // Keep the native Discord scheduled event available while it is in progress.
+        // Previously this used the start time, which removed the Discord event as soon as it began.
+        $canExist = $eventEndUtc > $nowUtc && (string) ($event['status'] ?? 'scheduled') !== 'cancelled';
+        $hasStarted = $eventStartUtc <= $nowUtc;
 
         if ($scheduledEventId !== '' && !$canExist) {
             try {
@@ -453,10 +462,17 @@ final class DiscordPostingService
         }
 
         if (!$canExist) {
-            return ['', 'Skipped native Discord event: event start time is already in the past'];
+            return ['', 'Skipped native Discord event: event has ended'];
         }
 
         if ($scheduledEventId !== '') {
+            if ($hasStarted) {
+                // Once an event has started, Discord keeps it live until its scheduled end time.
+                // Do not PATCH the schedule after start, as some schedule fields can no longer be changed.
+                $scheduledEventUrl = buildDiscordScheduledEventUrl($scheduledEventId);
+                return [$scheduledEventUrl, 'Kept native Discord event until event end time'];
+            }
+
             try {
                 editScheduledEvent($scheduledEventId, $event);
                 $scheduledEventUrl = buildDiscordScheduledEventUrl($scheduledEventId);
@@ -468,6 +484,10 @@ final class DiscordPostingService
                 }
                 $this->events->clearScheduledEventTracking((int) $event['id']);
             }
+        }
+
+        if ($hasStarted) {
+            return ['', 'Skipped native Discord event: event has already started'];
         }
 
         $scheduled = createScheduledEvent($event);
@@ -491,31 +511,13 @@ final class DiscordPostingService
                 continue;
             }
 
-            $existingChannelId = trim((string) ($event['discord_daily_channel_id'] ?? ''));
-            $existingMessageId = trim((string) ($event['discord_daily_message_id'] ?? ''));
-            if ($existingChannelId !== '' && $existingMessageId !== '') {
-                try {
-                    deleteDiscordMessage($existingChannelId, $existingMessageId);
-                    $results[] = [
-                        'scope' => 'day_of_events',
-                        'event_name' => (string) ($event['event_name'] ?? 'Event'),
-                        'status' => 'cleaned_up',
-                        'message' => 'Deleted expired daily event post.',
-                    ];
-                } catch (Throwable $e) {
-                    if (!$this->isUnknownDiscordResourceError($e)) {
-                        throw $e;
-                    }
-                    $results[] = [
-                        'scope' => 'day_of_events',
-                        'event_name' => (string) ($event['event_name'] ?? 'Event'),
-                        'status' => 'cleaned_up',
-                        'message' => 'Expired daily event post was already missing.',
-                    ];
-                }
-            }
-
-            $this->events->clearDailyPostTracking((int) $event['id']);
+            $message = $this->postOrUpdateDailyEventMessage($event, 'ended');
+            $results[] = [
+                'scope' => 'day_of_events',
+                'event_name' => (string) ($event['event_name'] ?? 'Event'),
+                'status' => 'updated',
+                'message' => $message,
+            ];
         }
 
         return $results;
@@ -962,7 +964,7 @@ private function sendVoiceDeleteWarningMessageIfDue(array $event, DateTimeImmuta
         $existingChannelId = trim((string) ($event['discord_daily_channel_id'] ?? ''));
         $existingMessageId = trim((string) ($event['discord_daily_message_id'] ?? ''));
 
-        if ($this->hasEventEnded($event) || (string) ($event['status'] ?? 'scheduled') === 'cancelled') {
+        if ((string) ($event['status'] ?? 'scheduled') === 'cancelled') {
             if ($existingChannelId !== '' && $existingMessageId !== '') {
                 try {
                     deleteDiscordMessage($existingChannelId, $existingMessageId);
@@ -973,7 +975,26 @@ private function sendVoiceDeleteWarningMessageIfDue(array $event, DateTimeImmuta
                 }
             }
             $this->events->clearDailyPostTracking((int) $event['id']);
-            return 'Removed daily event embed';
+            return 'Removed cancelled daily event embed';
+        }
+
+        if ($this->hasEventEnded($event)) {
+            if ($existingChannelId === '' || $existingMessageId === '') {
+                return 'Skipped ended daily post update: no existing daily post found';
+            }
+
+            try {
+                editDiscordMessage($existingChannelId, $existingMessageId, '', [buildEndedEventEmbed($event)], []);
+                // Leave the ended post in Discord, but clear tracking so cron does not keep editing it forever.
+                $this->events->clearDailyPostTracking((int) $event['id']);
+                return 'Updated daily event embed to ended state';
+            } catch (Throwable $e) {
+                if (!$this->isUnknownDiscordResourceError($e)) {
+                    throw $e;
+                }
+                $this->events->clearDailyPostTracking((int) $event['id']);
+                return 'Ended daily event post was already missing';
+            }
         }
 
         $channelId = $this->resolveDailyChannelId($event);

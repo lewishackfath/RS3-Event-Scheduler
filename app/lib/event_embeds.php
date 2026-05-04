@@ -133,6 +133,42 @@ function buildEventEmbed(array $event): array
     return $embed;
 }
 
+
+function buildEndedEventEmbed(array $event): array
+{
+    $brand = branding();
+    $local = utcToClanLocal((string) $event['event_start_utc']);
+    $thumbUrl = eventDisplayImageUrl($event);
+
+    $eventName = trim((string) ($event['event_name'] ?? 'Event'));
+    if ($eventName === '') {
+        $eventName = 'Event';
+    }
+
+    $embed = [
+        'description' => '*' . $eventName . '* - ' . $local->format('j F Y') . "\n" . 'This event has ended.',
+        'color' => hexColourToInt((string) ($brand['embed_colour'] ?? '#5865F2')),
+        'footer' => [
+            'text' => (string) ($brand['footer_text'] ?: currentClanName() . ' Events'),
+        ],
+        'timestamp' => (new DateTimeImmutable('now', utcTimezone()))->format(DateTimeInterface::ATOM),
+    ];
+
+    if ($thumbUrl !== '') {
+        $embed['thumbnail'] = ['url' => $thumbUrl];
+    }
+
+    if (($brand['logo_url'] ?? '') !== '') {
+        $embed['author'] = [
+            'name' => currentClanName(),
+            'icon_url' => (string) $brand['logo_url'],
+        ];
+        $embed['footer']['icon_url'] = (string) $brand['logo_url'];
+    }
+
+    return $embed;
+}
+
 function ordinalDaySuffix(int $day): string
 {
     if ($day >= 11 && $day <= 13) {
