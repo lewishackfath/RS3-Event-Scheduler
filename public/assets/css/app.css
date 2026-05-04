@@ -142,23 +142,8 @@ label:has(> input[type="radio"]) > input[type="radio"]{
     margin-top:.12em;
 }
 
-/* Fix date picker visibility on dark backgrounds */
-input[type="date"] {
-    color-scheme: dark;
-    background-color: #1e1e1e;
-    color: #ffffff;
-    border: 1px solid #444;
-}
-
-/* Improve icon visibility (WebKit browsers: Chrome, Edge, Safari) */
 input[type="date"]::-webkit-calendar-picker-indicator {
     filter: invert(1);
-    opacity: 0.8;
-    cursor: pointer;
-}
-
-input[type="date"]::-webkit-calendar-picker-indicator:hover {
-    opacity: 1;
 }
 
 .field{margin-bottom:14px;position:relative}
