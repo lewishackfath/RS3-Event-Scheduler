@@ -133,6 +133,31 @@ function buildEventEmbed(array $event): array
     return $embed;
 }
 
+function ordinalDaySuffix(int $day): string
+{
+    if ($day >= 11 && $day <= 13) {
+        return 'th';
+    }
+
+    return match ($day % 10) {
+        1 => 'st',
+        2 => 'nd',
+        3 => 'rd',
+        default => 'th',
+    };
+}
+
+function formatWeeklySummaryDayHeader(DateTimeImmutable $local): string
+{
+    $dayNumber = (int) $local->format('j');
+    return $local->format('l ') . $dayNumber . ordinalDaySuffix($dayNumber) . $local->format(' F');
+}
+
+function formatWeeklySummaryEventTime(DateTimeImmutable $local): string
+{
+    return $local->format('D j M') . ' • ' . $local->format('g:i A');
+}
+
 function buildWeeklySummaryEmbed(array $events, DateTimeImmutable $weekStartLocal): array
 {
     $brand = branding();
@@ -141,25 +166,42 @@ function buildWeeklySummaryEmbed(array $events, DateTimeImmutable $weekStartLoca
     foreach ($events as $event) {
         $local = utcToClanLocal((string) $event['event_start_utc']);
         $key = $local->format('Y-m-d');
-        $grouped[$key]['label'] = $local->format('l j M');
-        $grouped[$key]['items'][] = $event;
+
+        if (!isset($grouped[$key])) {
+            $grouped[$key] = [
+                'label' => formatWeeklySummaryDayHeader($local),
+                'items' => [],
+            ];
+        }
+
+        $grouped[$key]['items'][] = [
+            'event' => $event,
+            'local' => $local,
+        ];
     }
+
+    ksort($grouped);
 
     $fields = [];
     foreach ($grouped as $day) {
+        usort($day['items'], static function (array $a, array $b): int {
+            return ((string) $a['event']['event_start_utc']) <=> ((string) $b['event']['event_start_utc']);
+        });
+
         $lines = [];
-        foreach ($day['items'] as $event) {
-            $host = trim((string) ($event['host_name'] ?? ''));
-            $timestamp = discordUnixTimestamp((string) $event['event_start_utc']);
-            $line = '• **' . (string) $event['event_name'] . '** — Local: <t:' . $timestamp . ':F>';
-            if ($host !== '') {
-                $line .= ' — Host: ' . $host;
+        foreach ($day['items'] as $item) {
+            $event = $item['event'];
+            $local = $item['local'];
+            $eventName = trim((string) ($event['event_name'] ?? 'Event'));
+            if ($eventName === '') {
+                $eventName = 'Event';
             }
-            $lines[] = $line;
+
+            $lines[] = '- **' . $eventName . '** - ' . formatWeeklySummaryEventTime($local);
         }
 
         $fields[] = [
-            'name' => $day['label'],
+            'name' => '**' . $day['label'] . '**',
             'value' => implode("\n", $lines),
             'inline' => false,
         ];
@@ -175,7 +217,7 @@ function buildWeeklySummaryEmbed(array $events, DateTimeImmutable $weekStartLoca
 
     $embed = [
         'title' => currentClanName() . ' Weekly Schedule',
-        'description' => 'Week commencing ' . $weekStartLocal->format('j F Y') . '. All event times below use Discord timestamps, so members will see them in their own local timezone.',
+        'description' => 'Week commencing ' . $weekStartLocal->format('j F Y') . '.',
         'color' => hexColourToInt((string) ($brand['embed_colour'] ?? '#5865F2')),
         'fields' => $fields,
         'footer' => [
