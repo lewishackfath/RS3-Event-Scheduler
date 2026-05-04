@@ -150,7 +150,8 @@ function buildWeeklySummaryEmbed(array $events, DateTimeImmutable $weekStartLoca
         $lines = [];
         foreach ($day['items'] as $event) {
             $host = trim((string) ($event['host_name'] ?? ''));
-            $line = '• **' . (string) $event['event_name'] . '** — <t:' . discordUnixTimestamp((string) $event['event_start_utc']) . ':t>';
+            $timestamp = discordUnixTimestamp((string) $event['event_start_utc']);
+            $line = '• **' . (string) $event['event_name'] . '** — Local: <t:' . $timestamp . ':F>';
             if ($host !== '') {
                 $line .= ' — Host: ' . $host;
             }
