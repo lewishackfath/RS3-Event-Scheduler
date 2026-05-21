@@ -70,17 +70,8 @@ usort($displayEvents, static function (array $a, array $b): int {
     return strcmp($a['event']['event_start_utc'], $b['event']['event_start_utc']);
 });
 
-$upcomingEvents = [];
-$pastEvents = [];
-foreach ($displayEvents as $item) {
-    if ($item['is_past']) {
-        $pastEvents[] = $item;
-    } else {
-        $upcomingEvents[] = $item;
-    }
-}
-
-$showPastDefault = empty($upcomingEvents) && !empty($pastEvents);
+$pastCount = count(array_filter($displayEvents, static fn (array $item): bool => (bool) $item['is_past']));
+$upcomingCount = count($displayEvents) - $pastCount;
 $prev = $range['week_start_local']->modify('-7 days')->format('Y-m-d');
 $next = $range['week_start_local']->modify('+7 days')->format('Y-m-d');
 $currentWeekDate = $range['week_start_local']->format('Y-m-d');
@@ -93,7 +84,7 @@ renderHeader('Weekly Schedule');
     <div class="journal-cover-copy">
         <span class="journal-kicker">Arcane Chronicle</span>
         <h2 class="journal-title">Week of <?= e($range['week_start_local']->format('j F Y')) ?></h2>
-        <p class="journal-intro">Each event is now recorded as its own torn page from an ancient clan journal. Browse the week below as a spread of arcane notices, rituals, gatherings and battle plans.</p>
+        <p class="journal-intro">Each event is recorded as its own torn page from an ancient clan journal. The pages below now read in true chronological order from the start of the week to the end.</p>
         <div class="journal-runes" aria-hidden="true">✦ ✧ ◈ ✧ ✦</div>
         <div class="muted">Timezone: <?= e(appConfig()['clan']['timezone']) ?></div>
         <?php if (!$canManage): ?>
@@ -136,92 +127,62 @@ renderHeader('Weekly Schedule');
     <section class="journal-filter-bar mb-24">
         <div class="journal-filter-copy">
             <div class="journal-filter-title">Weekly Pages</div>
-            <div class="muted"><?= count($upcomingEvents) ?> current/upcoming <?= count($upcomingEvents) === 1 ? 'entry' : 'entries' ?><?php if (!empty($pastEvents)): ?> • <?= count($pastEvents) ?> past <?= count($pastEvents) === 1 ? 'entry' : 'entries' ?><?php endif; ?></div>
+            <div class="journal-filter-summary">
+                <?= count($displayEvents) ?> chronological <?= count($displayEvents) === 1 ? 'entry' : 'entries' ?>
+                <?php if ($pastCount > 0): ?>
+                    <span class="journal-summary-sep">•</span> <?= $pastCount ?> past <?= $pastCount === 1 ? 'entry' : 'entries' ?> muted
+                <?php endif; ?>
+                <?php if ($upcomingCount > 0): ?>
+                    <span class="journal-summary-sep">•</span> <?= $upcomingCount ?> current/upcoming
+                <?php endif; ?>
+            </div>
         </div>
-        <?php if (!empty($pastEvents)): ?>
-            <label class="journal-toggle">
-                <input type="checkbox" id="togglePastEvents"<?= $showPastDefault ? ' checked' : '' ?>>
-                <span>Show past events</span>
-            </label>
-        <?php endif; ?>
+        <span class="journal-count-pill"><?= count($displayEvents) ?> total</span>
     </section>
 
     <section class="journal-event-section">
         <div class="journal-section-heading">
-            <h3><?= !empty($upcomingEvents) ? 'Current & Upcoming Entries' : 'No Current or Upcoming Entries' ?></h3>
-            <?php if (!empty($upcomingEvents)): ?><span class="pill"><?= count($upcomingEvents) ?></span><?php endif; ?>
+            <h3>Chronological Entries</h3>
+            <span class="pill journal-solid-pill"><?= count($displayEvents) ?></span>
         </div>
 
-        <?php if (empty($upcomingEvents)): ?>
-            <div class="journal-empty-inline">
-                <div class="empty-rune" aria-hidden="true">✧</div>
-                <p>There are no current or upcoming events in this selected week.</p>
-            </div>
-        <?php else: ?>
-            <div class="journal-event-grid" id="currentEventGrid">
-                <?php foreach ($upcomingEvents as $index => $item): ?>
-                    <?php
-                    $event = $item['event'];
-                    $durationLabel = formatEventDurationLabel(isset($event['duration_minutes']) ? (int) $event['duration_minutes'] : null);
-                    $rolesHtml = formatPreferredRolesHtml((array) ($event['preferred_roles'] ?? []));
-                    $imageUrl = eventDisplayImageUrl($event);
-                    $tearClass = $tearClasses[$index % count($tearClasses)];
-                    ?>
-                    <article class="journal-event-card <?= e($tearClass) ?><?= $item['is_today'] ? ' event-is-today' : '' ?>" data-equalize-card>
-                        <div class="journal-event-card-inner">
-                            <div class="journal-event-media<?= $imageUrl === '' ? ' no-image' : '' ?>">
-                                <?php if ($imageUrl !== ''): ?>
-                                    <img class="journal-event-image" src="<?= e($imageUrl) ?>" alt="<?= e($event['event_name']) ?>">
-                                <?php else: ?>
-                                    <div class="journal-event-placeholder" aria-hidden="true">✦</div>
-                                <?php endif; ?>
-                                <div class="journal-event-date-seal">
-                                    <span class="seal-day"><?= e($item['day_label']) ?></span>
-                                    <span class="seal-date"><?= e($item['short_date']) ?></span>
-                                </div>
+        <div class="journal-event-grid" id="weeklyEventGrid">
+            <?php foreach ($displayEvents as $index => $item): ?>
+                <?php
+                $event = $item['event'];
+                $durationLabel = formatEventDurationLabel(isset($event['duration_minutes']) ? (int) $event['duration_minutes'] : null);
+                $rolesHtml = formatPreferredRolesHtml((array) ($event['preferred_roles'] ?? []));
+                $imageUrl = eventDisplayImageUrl($event);
+                $tearClass = $tearClasses[$index % count($tearClasses)];
+                ?>
+                <article class="journal-event-card <?= e($tearClass) ?><?= $item['is_today'] ? ' event-is-today' : '' ?><?= $item['is_past'] ? ' is-past-event' : '' ?>" data-equalize-card>
+                    <div class="journal-event-card-inner">
+                        <div class="journal-event-media<?= $imageUrl === '' ? ' no-image' : '' ?>">
+                            <?php if ($imageUrl !== ''): ?>
+                                <img class="journal-event-image" src="<?= e($imageUrl) ?>" alt="<?= e($event['event_name']) ?>">
+                            <?php else: ?>
+                                <div class="journal-event-placeholder" aria-hidden="true"><?= $item['is_past'] ? '☽' : '✦' ?></div>
+                            <?php endif; ?>
+                            <div class="journal-event-date-seal">
+                                <span class="seal-day"><?= e($item['day_label']) ?></span>
+                                <span class="seal-date"><?= e($item['short_date']) ?></span>
                             </div>
+                        </div>
 
-                            <div class="journal-event-content">
-                                <div class="journal-event-header">
-                                    <div>
-                                        <strong class="event-card-title"><?= e($event['event_name']) ?></strong>
-                                        <div class="journal-event-flags">
-                                            <?php if ($item['is_today']): ?><span class="badge">Today</span><?php endif; ?>
-                                            <?php if (!empty($event['recurring_series_id'])): ?><span class="pill">Recurring</span><?php endif; ?>
-                                            <?php if (!empty($event['is_recurring_weekly'])): ?><span class="badge">Weekly</span><?php endif; ?>
-                                        </div>
+                        <div class="journal-event-content">
+                            <div class="journal-event-header">
+                                <div class="journal-event-heading-copy">
+                                    <strong class="event-card-title"><?= e($event['event_name']) ?></strong>
+                                    <div class="journal-event-flags">
+                                        <?php if ($item['is_past']): ?><span class="pill journal-past-pill">Past Event</span><?php endif; ?>
+                                        <?php if ($item['is_today']): ?><span class="badge">Today</span><?php endif; ?>
+                                        <?php if (!empty($event['recurring_series_id'])): ?><span class="pill">Recurring</span><?php endif; ?>
+                                        <?php if (!empty($event['is_recurring_weekly'])): ?><span class="badge">Weekly</span><?php endif; ?>
                                     </div>
-                                </div>
-
-                                <div class="event-meta-stack journal-event-meta-stack">
-                                    <div class="event-meta-item">
-                                        <div class="event-meta-label">Time</div>
-                                        <div class="event-meta-value"><?= e($item['local']->format('g:i A T')) ?> <span class="event-meta-sep">•</span> Game <?= e($item['utc']->format('H:i')) ?> UTC <span class="event-meta-sep">•</span> <?= e($durationLabel) ?></div>
-                                    </div>
-                                    <div class="event-meta-item">
-                                        <div class="event-meta-label">Host</div>
-                                        <div class="event-meta-value"><?= e($event['host_name'] ?: 'TBC') ?></div>
-                                    </div>
-                                    <div class="event-meta-item">
-                                        <div class="event-meta-label">Location</div>
-                                        <div class="event-meta-value"><?= e(($event['event_location'] ?? '') !== '' ? $event['event_location'] : (appConfig()['discord']['event_location_default'] ?? 'RuneScape - In Game')) ?></div>
-                                    </div>
-                                    <?php if ($rolesHtml !== ''): ?>
-                                        <div class="event-meta-item event-roles-section">
-                                            <div class="event-meta-label">Roles</div>
-                                            <div class="event-role-list"><?= $rolesHtml ?></div>
-                                        </div>
-                                    <?php endif; ?>
-                                    <?php if (!empty($event['event_description'])): ?>
-                                        <div class="event-meta-item">
-                                            <div class="event-meta-label">Description</div>
-                                            <div class="event-meta-value event-description journal-event-description"><?= nl2br(e($event['event_description'])) ?></div>
-                                        </div>
-                                    <?php endif; ?>
                                 </div>
 
                                 <?php if ($canManage): ?>
-                                    <div class="actions event-entry-actions journal-event-actions mt-auto">
+                                    <div class="actions event-entry-actions journal-event-actions journal-event-actions-top">
                                         <a class="btn secondary" href="event_edit.php?id=<?= (int) $event['id'] ?>">Edit</a>
                                         <a class="btn secondary" href="sync_event.php?id=<?= (int) $event['id'] ?>" onclick="return confirm('Sync this event to Discord now?');">Sync</a>
                                         <?php if (($event['status'] ?? 'scheduled') !== 'cancelled'): ?>
@@ -231,99 +192,43 @@ renderHeader('Weekly Schedule');
                                     </div>
                                 <?php endif; ?>
                             </div>
+
+                            <div class="event-meta-stack journal-event-meta-stack">
+                                <div class="event-meta-item">
+                                    <div class="event-meta-label">Time</div>
+                                    <div class="event-meta-value"><?= e($item['local']->format('g:i A T')) ?> <span class="event-meta-sep">•</span> Game <?= e($item['utc']->format('H:i')) ?> UTC</div>
+                                </div>
+                                <div class="event-meta-item">
+                                    <div class="event-meta-label">Duration</div>
+                                    <div class="event-meta-value"><?= e($durationLabel) ?></div>
+                                </div>
+                                <div class="event-meta-item">
+                                    <div class="event-meta-label">Host</div>
+                                    <div class="event-meta-value"><?= e($event['host_name'] ?: 'TBC') ?></div>
+                                </div>
+                                <div class="event-meta-item">
+                                    <div class="event-meta-label">Location</div>
+                                    <div class="event-meta-value"><?= e(($event['event_location'] ?? '') !== '' ? $event['event_location'] : (appConfig()['discord']['event_location_default'] ?? 'RuneScape - In Game')) ?></div>
+                                </div>
+                                <?php if ($rolesHtml !== ''): ?>
+                                    <div class="event-meta-item event-roles-section">
+                                        <div class="event-meta-label">Roles</div>
+                                        <div class="event-role-list"><?= $rolesHtml ?></div>
+                                    </div>
+                                <?php endif; ?>
+                                <?php if (!empty($event['event_description'])): ?>
+                                    <div class="event-meta-item">
+                                        <div class="event-meta-label">Description</div>
+                                        <div class="event-meta-value event-description journal-event-description"><?= nl2br(e($event['event_description'])) ?></div>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
                         </div>
-                    </article>
-                <?php endforeach; ?>
-            </div>
-        <?php endif; ?>
+                    </div>
+                </article>
+            <?php endforeach; ?>
+        </div>
     </section>
-
-    <?php if (!empty($pastEvents)): ?>
-        <section class="journal-event-section journal-past-section<?= $showPastDefault ? '' : ' is-hidden' ?>" id="pastEventSection">
-            <div class="journal-section-heading">
-                <h3>Past Entries</h3>
-                <span class="pill"><?= count($pastEvents) ?></span>
-            </div>
-
-            <div class="journal-event-grid" id="pastEventGrid">
-                <?php foreach ($pastEvents as $index => $item): ?>
-                    <?php
-                    $event = $item['event'];
-                    $durationLabel = formatEventDurationLabel(isset($event['duration_minutes']) ? (int) $event['duration_minutes'] : null);
-                    $rolesHtml = formatPreferredRolesHtml((array) ($event['preferred_roles'] ?? []));
-                    $imageUrl = eventDisplayImageUrl($event);
-                    $tearClass = $tearClasses[$index % count($tearClasses)];
-                    ?>
-                    <article class="journal-event-card <?= e($tearClass) ?> is-past-event" data-equalize-card>
-                        <div class="journal-event-card-inner">
-                            <div class="journal-event-media<?= $imageUrl === '' ? ' no-image' : '' ?>">
-                                <?php if ($imageUrl !== ''): ?>
-                                    <img class="journal-event-image" src="<?= e($imageUrl) ?>" alt="<?= e($event['event_name']) ?>">
-                                <?php else: ?>
-                                    <div class="journal-event-placeholder" aria-hidden="true">☽</div>
-                                <?php endif; ?>
-                                <div class="journal-event-date-seal">
-                                    <span class="seal-day"><?= e($item['day_label']) ?></span>
-                                    <span class="seal-date"><?= e($item['short_date']) ?></span>
-                                </div>
-                            </div>
-
-                            <div class="journal-event-content">
-                                <div class="journal-event-header">
-                                    <div>
-                                        <strong class="event-card-title"><?= e($event['event_name']) ?></strong>
-                                        <div class="journal-event-flags">
-                                            <span class="pill">Past Event</span>
-                                            <?php if (!empty($event['recurring_series_id'])): ?><span class="pill">Recurring</span><?php endif; ?>
-                                            <?php if (!empty($event['is_recurring_weekly'])): ?><span class="badge">Weekly</span><?php endif; ?>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="event-meta-stack journal-event-meta-stack">
-                                    <div class="event-meta-item">
-                                        <div class="event-meta-label">Time</div>
-                                        <div class="event-meta-value"><?= e($item['local']->format('g:i A T')) ?> <span class="event-meta-sep">•</span> Game <?= e($item['utc']->format('H:i')) ?> UTC <span class="event-meta-sep">•</span> <?= e($durationLabel) ?></div>
-                                    </div>
-                                    <div class="event-meta-item">
-                                        <div class="event-meta-label">Host</div>
-                                        <div class="event-meta-value"><?= e($event['host_name'] ?: 'TBC') ?></div>
-                                    </div>
-                                    <div class="event-meta-item">
-                                        <div class="event-meta-label">Location</div>
-                                        <div class="event-meta-value"><?= e(($event['event_location'] ?? '') !== '' ? $event['event_location'] : (appConfig()['discord']['event_location_default'] ?? 'RuneScape - In Game')) ?></div>
-                                    </div>
-                                    <?php if ($rolesHtml !== ''): ?>
-                                        <div class="event-meta-item event-roles-section">
-                                            <div class="event-meta-label">Roles</div>
-                                            <div class="event-role-list"><?= $rolesHtml ?></div>
-                                        </div>
-                                    <?php endif; ?>
-                                    <?php if (!empty($event['event_description'])): ?>
-                                        <div class="event-meta-item">
-                                            <div class="event-meta-label">Description</div>
-                                            <div class="event-meta-value event-description journal-event-description"><?= nl2br(e($event['event_description'])) ?></div>
-                                        </div>
-                                    <?php endif; ?>
-                                </div>
-
-                                <?php if ($canManage): ?>
-                                    <div class="actions event-entry-actions journal-event-actions mt-auto">
-                                        <a class="btn secondary" href="event_edit.php?id=<?= (int) $event['id'] ?>">Edit</a>
-                                        <a class="btn secondary" href="sync_event.php?id=<?= (int) $event['id'] ?>" onclick="return confirm('Sync this event to Discord now?');">Sync</a>
-                                        <?php if (($event['status'] ?? 'scheduled') !== 'cancelled'): ?>
-                                            <a class="btn danger" href="cancel_event.php?id=<?= (int) $event['id'] ?>" onclick="return confirm('Cancel this event and update Discord?');">Cancel</a>
-                                        <?php endif; ?>
-                                        <a class="btn danger" href="event_delete.php?id=<?= (int) $event['id'] ?>" onclick="return confirm('Delete this event?');">Delete</a>
-                                    </div>
-                                <?php endif; ?>
-                            </div>
-                        </div>
-                    </article>
-                <?php endforeach; ?>
-            </div>
-        </section>
-    <?php endif; ?>
 <?php endif; ?>
 
 <script>
@@ -343,44 +248,30 @@ renderHeader('Weekly Schedule');
     });
 
     const equalizeCards = function () {
-        const groups = ['currentEventGrid', 'pastEventGrid'];
-        groups.forEach(function (id) {
-            const grid = document.getElementById(id);
-            if (!grid || grid.offsetParent === null) {
-                return;
-            }
+        const grid = document.getElementById('weeklyEventGrid');
+        if (!grid || grid.offsetParent === null) {
+            return;
+        }
 
-            const cards = Array.prototype.slice.call(grid.querySelectorAll('[data-equalize-card]'));
-            if (!cards.length) {
-                return;
-            }
+        const cards = Array.prototype.slice.call(grid.querySelectorAll('[data-equalize-card]'));
+        if (!cards.length) {
+            return;
+        }
 
-            cards.forEach(function (card) {
-                card.style.height = 'auto';
-                card.style.minHeight = '0';
-            });
+        cards.forEach(function (card) {
+            card.style.height = 'auto';
+            card.style.minHeight = '0';
+        });
 
-            let maxHeight = 0;
-            cards.forEach(function (card) {
-                maxHeight = Math.max(maxHeight, card.offsetHeight);
-            });
+        let maxHeight = 0;
+        cards.forEach(function (card) {
+            maxHeight = Math.max(maxHeight, card.offsetHeight);
+        });
 
-            cards.forEach(function (card) {
-                card.style.minHeight = maxHeight + 'px';
-            });
+        cards.forEach(function (card) {
+            card.style.minHeight = maxHeight + 'px';
         });
     };
-
-    const pastToggle = document.getElementById('togglePastEvents');
-    const pastSection = document.getElementById('pastEventSection');
-    if (pastToggle && pastSection) {
-        const syncPastVisibility = function () {
-            pastSection.classList.toggle('is-hidden', !pastToggle.checked);
-            window.requestAnimationFrame(equalizeCards);
-        };
-        pastToggle.addEventListener('change', syncPastVisibility);
-        syncPastVisibility();
-    }
 
     window.addEventListener('load', equalizeCards);
     window.addEventListener('resize', equalizeCards);

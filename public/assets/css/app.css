@@ -1051,3 +1051,98 @@ code,.inline-code{
 @media (max-width: 520px){
     .journal-event-card .event-role-list{grid-template-columns:1fr}
 }
+
+/* Schedule chronological journal refinements */
+.journal-filter-bar{
+    background:
+        linear-gradient(180deg,rgba(255,246,215,.94),rgba(224,190,124,.82)),
+        #ead3a0;
+    border-color:rgba(83,51,21,.42);
+    box-shadow:0 14px 30px rgba(46,27,10,.16), inset 0 1px 0 rgba(255,255,255,.58);
+}
+.journal-filter-summary{
+    color:#3d250f;
+    font-weight:800;
+    line-height:1.45;
+}
+.journal-summary-sep{color:#8b5b21;margin:0 6px}
+.journal-count-pill,
+.journal-solid-pill{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    gap:6px;
+    padding:8px 13px;
+    border-radius:999px;
+    border:1px solid rgba(74,44,14,.42);
+    background:linear-gradient(180deg,#7b4a18,#3c220c);
+    color:#f9e5ad;
+    font-size:.82rem;
+    font-weight:900;
+    letter-spacing:.04em;
+    white-space:nowrap;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.14),0 8px 18px rgba(52,30,9,.15);
+}
+.journal-section-heading .journal-solid-pill{padding:6px 11px}
+
+.journal-event-heading-copy{
+    min-width:0;
+    flex:1 1 180px;
+}
+.journal-event-actions-top{
+    margin-top:0;
+    margin-left:auto;
+    align-self:flex-start;
+    justify-content:flex-end;
+    flex:0 1 48%;
+    gap:6px;
+}
+.journal-event-actions-top .btn{
+    padding:7px 10px;
+    border-radius:11px;
+    font-size:.78rem;
+}
+
+.journal-event-card.is-past-event{
+    opacity:1;
+    filter:drop-shadow(0 12px 21px rgba(43,24,7,.14)) grayscale(.84) saturate(.48);
+}
+.journal-event-card.is-past-event .journal-event-card-inner{
+    background:
+        radial-gradient(circle at 15% 10%, rgba(255,255,255,.22), transparent 11rem),
+        radial-gradient(circle at 88% 82%, rgba(90,90,90,.14), transparent 12rem),
+        linear-gradient(145deg,#d8d1c1 0%,#bfb49f 48%,#d4c6aa 100%);
+    border-color:rgba(72,68,59,.32);
+}
+.journal-event-card.is-past-event .journal-event-image{
+    filter:grayscale(1) opacity(.72);
+}
+.journal-event-card.is-past-event .journal-event-date-seal{
+    background:rgba(38,35,30,.82);
+    color:#e0d6bd;
+    border-color:rgba(69,65,57,.52);
+}
+.journal-event-card.is-past-event .seal-day{color:#c5b790}
+.journal-event-card.is-past-event .event-card-title,
+.journal-event-card.is-past-event .event-meta-value,
+.journal-event-card.is-past-event .event-role-line{color:#3f3a31}
+.journal-past-pill{
+    background:linear-gradient(180deg,#766f62,#4d473c)!important;
+    color:#efe4c8!important;
+    border-color:rgba(73,67,56,.5)!important;
+}
+
+@media (max-width: 860px){
+    .journal-event-header{flex-direction:column}
+    .journal-event-actions-top{
+        width:100%;
+        max-width:none;
+        margin-left:0;
+        justify-content:flex-start;
+        flex:1 1 auto;
+    }
+}
+@media (max-width: 520px){
+    .journal-count-pill{width:100%}
+    .journal-event-actions-top .btn{flex:1 1 calc(50% - 6px)}
+}
