@@ -7,13 +7,16 @@ function renderHeader(string $title): void
     $bgValue = trim((string) ($brand['background_image_url'] ?? '')) !== ''
         ? 'url(' . e((string) $brand['background_image_url']) . ')'
         : 'none';
+    $headerValue = trim((string) ($brand['header_image_url'] ?? '')) !== ''
+        ? 'url(' . e((string) $brand['header_image_url']) . ')'
+        : 'none';
     $user = function_exists('currentUser') ? currentUser() : null;
     $currentPage = basename((string) ($_SERVER['PHP_SELF'] ?? 'index.php'));
 
     echo '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">';
     echo '<title>' . e($title) . ' - ' . e(appConfig()['app']['name']) . '</title>';
     echo '<link rel="stylesheet" href="assets/css/app.css">';
-    echo '</head><body style="--page-background-image:' . $bgValue . ';">';
+    echo '</head><body style="--page-background-image:' . $bgValue . ';--hero-header-image:' . $headerValue . ';">';
     echo '<div class="hero"><div class="hero-inner">';
     echo '<div class="hero-left">';
     if (($brand['logo_url'] ?? '') !== '') {
