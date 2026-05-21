@@ -34,7 +34,7 @@ function formatPreferredRolesHtml(array $roles): string
             continue;
         }
 
-        $html[] = '<span class="event-role-pill"><span class="role-emoji">' . e($emoji) . '</span><span class="role-name">' . e($name) . '</span></span>';
+        $html[] = '<span class="event-role-line"><span class="role-emoji">' . e($emoji) . '</span><span class="role-name">' . e($name) . '</span></span>';
     }
 
     return implode('', $html);
@@ -357,6 +357,7 @@ renderHeader('Weekly Schedule');
 
             cards.forEach(function (card) {
                 card.style.height = 'auto';
+                card.style.minHeight = '0';
             });
 
             let maxHeight = 0;
@@ -365,7 +366,7 @@ renderHeader('Weekly Schedule');
             });
 
             cards.forEach(function (card) {
-                card.style.height = maxHeight + 'px';
+                card.style.minHeight = maxHeight + 'px';
             });
         });
     };
