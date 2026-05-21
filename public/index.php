@@ -23,6 +23,63 @@ function formatEventDurationLabel(?int $minutes): string
     return $remainingMinutes . 'm';
 }
 
+function renderJournalAdminActionsHtml(array $event, string $className): string
+{
+    $id = (int) ($event['id'] ?? 0);
+    if ($id <= 0) {
+        return '';
+    }
+
+    $actions = [
+        [
+            'href' => 'event_edit.php?id=' . $id,
+            'icon' => '✎',
+            'label' => 'Edit',
+            'class' => '',
+            'confirm' => '',
+        ],
+        [
+            'href' => 'sync_event.php?id=' . $id,
+            'icon' => '↻',
+            'label' => 'Sync',
+            'class' => '',
+            'confirm' => 'Sync this event to Discord now?',
+        ],
+    ];
+
+    if (($event['status'] ?? 'scheduled') !== 'cancelled') {
+        $actions[] = [
+            'href' => 'cancel_event.php?id=' . $id,
+            'icon' => '⊘',
+            'label' => 'Cancel',
+            'class' => ' danger',
+            'confirm' => 'Cancel this event and update Discord?',
+        ];
+    }
+
+    $actions[] = [
+        'href' => 'event_delete.php?id=' . $id,
+        'icon' => '✕',
+        'label' => 'Delete',
+        'class' => ' danger',
+        'confirm' => 'Delete this event?',
+    ];
+
+    $html = '<div class="' . e($className) . '" aria-label="Admin actions">';
+    foreach ($actions as $action) {
+        $confirm = $action['confirm'] !== ''
+            ? ' onclick="return confirm(&quot;' . e($action['confirm']) . '&quot;);"'
+            : '';
+        $html .= '<a class="journal-icon-action' . e($action['class']) . '" href="' . e($action['href']) . '" title="' . e($action['label']) . ' event" aria-label="' . e($action['label']) . ' event"' . $confirm . '>';
+        $html .= '<span class="journal-action-icon" aria-hidden="true">' . e($action['icon']) . '</span><span class="journal-action-label">' . e($action['label']) . '</span>';
+        $html .= '</a>';
+    }
+    $html .= '</div>';
+
+    return $html;
+}
+
+
 function formatPreferredRolesHtml(array $roles): string
 {
     $html = [];
@@ -84,7 +141,6 @@ renderHeader('Weekly Schedule');
     <div class="journal-cover-copy">
         <span class="journal-kicker">Arcane Chronicle</span>
         <h2 class="journal-title">Week of <?= e($range['week_start_local']->format('j F Y')) ?></h2>
-        <p class="journal-intro">Each event is recorded as its own torn page from an ancient clan journal. The pages below now read in true chronological order from the start of the week to the end.</p>
         <div class="journal-runes" aria-hidden="true">✦ ✧ ◈ ✧ ✦</div>
         <div class="muted">Timezone: <?= e(appConfig()['clan']['timezone']) ?></div>
         <?php if (!$canManage): ?>
@@ -127,15 +183,6 @@ renderHeader('Weekly Schedule');
     <section class="journal-filter-bar mb-24">
         <div class="journal-filter-copy">
             <div class="journal-filter-title">Weekly Pages</div>
-            <div class="journal-filter-summary">
-                <?= count($displayEvents) ?> chronological <?= count($displayEvents) === 1 ? 'entry' : 'entries' ?>
-                <?php if ($pastCount > 0): ?>
-                    <span class="journal-summary-sep">•</span> <?= $pastCount ?> past <?= $pastCount === 1 ? 'entry' : 'entries' ?> hidden by default
-                <?php endif; ?>
-                <?php if ($upcomingCount > 0): ?>
-                    <span class="journal-summary-sep">•</span> <?= $upcomingCount ?> current/upcoming
-                <?php endif; ?>
-            </div>
         </div>
         <div class="journal-filter-actions">
             <?php if ($pastCount > 0): ?>
@@ -144,7 +191,6 @@ renderHeader('Weekly Schedule');
                     <span>Show past events</span>
                 </label>
             <?php endif; ?>
-            <span class="journal-count-pill"><?= count($displayEvents) ?> total</span>
         </div>
     </section>
 
@@ -154,7 +200,6 @@ renderHeader('Weekly Schedule');
                 <span class="journal-kicker-small">Arcane Ledger</span>
                 <h3>Chronological Entries</h3>
             </div>
-            <span class="pill journal-solid-pill"><span id="visibleEventCount"><?= $upcomingCount ?></span> visible</span>
         </div>
 
         <div class="journal-event-grid" id="weeklyEventGrid">
@@ -179,14 +224,7 @@ renderHeader('Weekly Schedule');
                                 <span class="seal-date"><?= e($item['short_date']) ?></span>
                             </div>
                             <?php if ($canManage): ?>
-                                <div class="journal-image-actions" aria-label="Admin actions">
-                                    <a class="journal-icon-action" href="event_edit.php?id=<?= (int) $event['id'] ?>" title="Edit event" aria-label="Edit event"><span aria-hidden="true">✎</span></a>
-                                    <a class="journal-icon-action" href="sync_event.php?id=<?= (int) $event['id'] ?>" title="Sync to Discord" aria-label="Sync to Discord" onclick="return confirm('Sync this event to Discord now?');"><span aria-hidden="true">↻</span></a>
-                                    <?php if (($event['status'] ?? 'scheduled') !== 'cancelled'): ?>
-                                        <a class="journal-icon-action danger" href="cancel_event.php?id=<?= (int) $event['id'] ?>" title="Cancel event" aria-label="Cancel event" onclick="return confirm('Cancel this event and update Discord?');"><span aria-hidden="true">⊘</span></a>
-                                    <?php endif; ?>
-                                    <a class="journal-icon-action danger" href="event_delete.php?id=<?= (int) $event['id'] ?>" title="Delete event" aria-label="Delete event" onclick="return confirm('Delete this event?');"><span aria-hidden="true">✕</span></a>
-                                </div>
+                                <?= renderJournalAdminActionsHtml($event, 'journal-image-actions') ?>
                             <?php endif; ?>
                         </div>
 
@@ -233,6 +271,9 @@ renderHeader('Weekly Schedule');
                                     </div>
                                 <?php endif; ?>
                             </div>
+                            <?php if ($canManage): ?>
+                                <?= renderJournalAdminActionsHtml($event, 'journal-mobile-actions') ?>
+                            <?php endif; ?>
                         </div>
                     </div>
                 </article>

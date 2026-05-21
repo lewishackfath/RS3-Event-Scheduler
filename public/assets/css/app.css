@@ -1268,3 +1268,61 @@ code,.inline-code{
     .journal-image-actions{top:10px;right:10px;gap:6px}
     .journal-icon-action{width:32px;height:32px}
 }
+
+/* Admin action refinements: stacked desktop icons, mobile bottom buttons */
+.journal-image-actions{
+    top:12px;
+    right:12px;
+    bottom:auto;
+    flex-direction:column;
+    align-items:flex-end;
+    justify-content:flex-start;
+    gap:8px;
+    max-width:none;
+}
+.journal-image-actions .journal-icon-action{
+    width:36px;
+    height:36px;
+}
+.journal-action-label{
+    display:none;
+}
+.journal-mobile-actions{
+    display:none;
+}
+
+@media (max-width: 700px){
+    .journal-image-actions{
+        display:none;
+    }
+    .journal-mobile-actions{
+        display:grid;
+        grid-template-columns:repeat(2,minmax(0,1fr));
+        gap:10px;
+        margin-top:14px;
+        padding-top:12px;
+        border-top:1px dashed rgba(90,57,24,.24);
+    }
+    .journal-mobile-actions .journal-icon-action{
+        width:auto;
+        height:auto;
+        min-height:42px;
+        padding:10px 12px;
+        border-radius:14px;
+        gap:8px;
+        font-size:.94rem;
+        text-align:center;
+    }
+    .journal-mobile-actions .journal-action-label{
+        display:inline;
+        font-size:.84rem;
+        line-height:1;
+        letter-spacing:.03em;
+        text-transform:uppercase;
+    }
+}
+@media (max-width: 420px){
+    .journal-mobile-actions{
+        grid-template-columns:1fr;
+    }
+}
