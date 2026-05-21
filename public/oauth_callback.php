@@ -36,5 +36,5 @@ try {
     redirect(consumeReturnTo());
 } catch (Throwable $e) {
     setFlash('error', $e->getMessage());
-    redirect('login.php');
+    redirect('index.php');
 }

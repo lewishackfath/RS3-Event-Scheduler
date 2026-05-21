@@ -8,19 +8,17 @@ if (isAuthenticated()) {
     redirect('index.php');
 }
 
+if (isDiscordAuthConfigured()) {
+    redirect(buildDiscordLoginUrl());
+}
+
 renderHeader('Login');
 ?>
 <div class="card mt-40" style="max-width:720px;margin-left:auto;margin-right:auto;">
-    <h2 style="margin-top:0;">Discord Login Required</h2>
-    <p>This scheduler is restricted to users who hold one of the configured Discord admin roles in this clan's Discord server, or whose Discord user ID is explicitly allowed in the app configuration.</p>
-
-    <?php if (!isDiscordAuthConfigured()): ?>
-        <div class="flash error">
-            Discord OAuth is not fully configured. Please set <code>DISCORD_CLIENT_ID</code>, <code>DISCORD_CLIENT_SECRET</code>, <code>DISCORD_REDIRECT_URI</code>, <code>DISCORD_GUILD_ID</code>, and at least one of <code>ADMIN_ROLE_IDS</code> or <code>ADMIN_USER_IDS</code> in your <code>.env</code> file.
-        </div>
-    <?php else: ?>
-        <p><a class="btn" href="<?= e(buildDiscordLoginUrl()) ?>">Login with Discord</a></p>
-        <p class="muted">Required OAuth scopes: <?= e(discordOauthConfig()['scope']) ?></p>
-    <?php endif; ?>
+    <h2 style="margin-top:0;">Discord Login Not Configured</h2>
+    <p>This scheduler is restricted to configured Discord admins, but Discord OAuth is not fully configured yet.</p>
+    <div class="flash error">
+        Please set <code>DISCORD_CLIENT_ID</code>, <code>DISCORD_CLIENT_SECRET</code>, <code>DISCORD_REDIRECT_URI</code>, <code>DISCORD_GUILD_ID</code>, and at least one of <code>ADMIN_ROLE_IDS</code> or <code>ADMIN_USER_IDS</code> in your <code>.env</code> file.
+    </div>
 </div>
 <?php renderFooter(); ?>

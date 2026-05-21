@@ -130,20 +130,31 @@ renderHeader('Weekly Schedule');
             <div class="journal-filter-summary">
                 <?= count($displayEvents) ?> chronological <?= count($displayEvents) === 1 ? 'entry' : 'entries' ?>
                 <?php if ($pastCount > 0): ?>
-                    <span class="journal-summary-sep">•</span> <?= $pastCount ?> past <?= $pastCount === 1 ? 'entry' : 'entries' ?> muted
+                    <span class="journal-summary-sep">•</span> <?= $pastCount ?> past <?= $pastCount === 1 ? 'entry' : 'entries' ?> hidden by default
                 <?php endif; ?>
                 <?php if ($upcomingCount > 0): ?>
                     <span class="journal-summary-sep">•</span> <?= $upcomingCount ?> current/upcoming
                 <?php endif; ?>
             </div>
         </div>
-        <span class="journal-count-pill"><?= count($displayEvents) ?> total</span>
+        <div class="journal-filter-actions">
+            <?php if ($pastCount > 0): ?>
+                <label class="journal-toggle journal-past-toggle">
+                    <input type="checkbox" id="togglePastEvents">
+                    <span>Show past events</span>
+                </label>
+            <?php endif; ?>
+            <span class="journal-count-pill"><?= count($displayEvents) ?> total</span>
+        </div>
     </section>
 
     <section class="journal-event-section">
-        <div class="journal-section-heading">
-            <h3>Chronological Entries</h3>
-            <span class="pill journal-solid-pill"><?= count($displayEvents) ?></span>
+        <div class="journal-section-heading journal-heading-card">
+            <div>
+                <span class="journal-kicker-small">Arcane Ledger</span>
+                <h3>Chronological Entries</h3>
+            </div>
+            <span class="pill journal-solid-pill"><span id="visibleEventCount"><?= $upcomingCount ?></span> visible</span>
         </div>
 
         <div class="journal-event-grid" id="weeklyEventGrid">
@@ -155,7 +166,7 @@ renderHeader('Weekly Schedule');
                 $imageUrl = eventDisplayImageUrl($event);
                 $tearClass = $tearClasses[$index % count($tearClasses)];
                 ?>
-                <article class="journal-event-card <?= e($tearClass) ?><?= $item['is_today'] ? ' event-is-today' : '' ?><?= $item['is_past'] ? ' is-past-event' : '' ?>" data-equalize-card>
+                <article class="journal-event-card <?= e($tearClass) ?><?= $item['is_today'] ? ' event-is-today' : '' ?><?= $item['is_past'] ? ' is-past-event is-hidden-by-filter' : '' ?>" data-equalize-card<?= $item['is_past'] ? ' data-past-event="1"' : '' ?>>
                     <div class="journal-event-card-inner">
                         <div class="journal-event-media<?= $imageUrl === '' ? ' no-image' : '' ?>">
                             <?php if ($imageUrl !== ''): ?>
@@ -167,6 +178,16 @@ renderHeader('Weekly Schedule');
                                 <span class="seal-day"><?= e($item['day_label']) ?></span>
                                 <span class="seal-date"><?= e($item['short_date']) ?></span>
                             </div>
+                            <?php if ($canManage): ?>
+                                <div class="journal-image-actions" aria-label="Admin actions">
+                                    <a class="journal-icon-action" href="event_edit.php?id=<?= (int) $event['id'] ?>" title="Edit event" aria-label="Edit event"><span aria-hidden="true">✎</span></a>
+                                    <a class="journal-icon-action" href="sync_event.php?id=<?= (int) $event['id'] ?>" title="Sync to Discord" aria-label="Sync to Discord" onclick="return confirm('Sync this event to Discord now?');"><span aria-hidden="true">↻</span></a>
+                                    <?php if (($event['status'] ?? 'scheduled') !== 'cancelled'): ?>
+                                        <a class="journal-icon-action danger" href="cancel_event.php?id=<?= (int) $event['id'] ?>" title="Cancel event" aria-label="Cancel event" onclick="return confirm('Cancel this event and update Discord?');"><span aria-hidden="true">⊘</span></a>
+                                    <?php endif; ?>
+                                    <a class="journal-icon-action danger" href="event_delete.php?id=<?= (int) $event['id'] ?>" title="Delete event" aria-label="Delete event" onclick="return confirm('Delete this event?');"><span aria-hidden="true">✕</span></a>
+                                </div>
+                            <?php endif; ?>
                         </div>
 
                         <div class="journal-event-content">
@@ -180,17 +201,6 @@ renderHeader('Weekly Schedule');
                                         <?php if (!empty($event['is_recurring_weekly'])): ?><span class="badge">Weekly</span><?php endif; ?>
                                     </div>
                                 </div>
-
-                                <?php if ($canManage): ?>
-                                    <div class="actions event-entry-actions journal-event-actions journal-event-actions-top">
-                                        <a class="btn secondary" href="event_edit.php?id=<?= (int) $event['id'] ?>">Edit</a>
-                                        <a class="btn secondary" href="sync_event.php?id=<?= (int) $event['id'] ?>" onclick="return confirm('Sync this event to Discord now?');">Sync</a>
-                                        <?php if (($event['status'] ?? 'scheduled') !== 'cancelled'): ?>
-                                            <a class="btn danger" href="cancel_event.php?id=<?= (int) $event['id'] ?>" onclick="return confirm('Cancel this event and update Discord?');">Cancel</a>
-                                        <?php endif; ?>
-                                        <a class="btn danger" href="event_delete.php?id=<?= (int) $event['id'] ?>" onclick="return confirm('Delete this event?');">Delete</a>
-                                    </div>
-                                <?php endif; ?>
                             </div>
 
                             <div class="event-meta-stack journal-event-meta-stack">
@@ -253,12 +263,15 @@ renderHeader('Weekly Schedule');
             return;
         }
 
-        const cards = Array.prototype.slice.call(grid.querySelectorAll('[data-equalize-card]'));
+        const allCards = Array.prototype.slice.call(grid.querySelectorAll('[data-equalize-card]'));
+        const cards = allCards.filter(function (card) {
+            return !card.classList.contains('is-hidden-by-filter');
+        });
         if (!cards.length) {
             return;
         }
 
-        cards.forEach(function (card) {
+        allCards.forEach(function (card) {
             card.style.height = 'auto';
             card.style.minHeight = '0';
         });
@@ -273,7 +286,36 @@ renderHeader('Weekly Schedule');
         });
     };
 
-    window.addEventListener('load', equalizeCards);
+    const togglePastEvents = document.getElementById('togglePastEvents');
+    const visibleEventCount = document.getElementById('visibleEventCount');
+    const syncPastVisibility = function () {
+        const showPast = !!(togglePastEvents && togglePastEvents.checked);
+        const cards = Array.prototype.slice.call(document.querySelectorAll('[data-equalize-card]'));
+        let visibleCount = 0;
+
+        cards.forEach(function (card) {
+            const isPast = card.hasAttribute('data-past-event');
+            card.classList.toggle('is-hidden-by-filter', isPast && !showPast);
+            if (!card.classList.contains('is-hidden-by-filter')) {
+                visibleCount++;
+            }
+        });
+
+        if (visibleEventCount) {
+            visibleEventCount.textContent = String(visibleCount);
+        }
+
+        window.requestAnimationFrame(equalizeCards);
+    };
+
+    if (togglePastEvents) {
+        togglePastEvents.addEventListener('change', syncPastVisibility);
+    }
+
+    window.addEventListener('load', function () {
+        syncPastVisibility();
+        equalizeCards();
+    });
     window.addEventListener('resize', equalizeCards);
 
     document.querySelectorAll('.journal-event-image').forEach(function (img) {
