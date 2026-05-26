@@ -8,6 +8,7 @@ require_once __DIR__ . '/../lib/time.php';
 final class EventRepository
 {
     private ?bool $hasRecurringSeriesId = null;
+    private ?bool $hasRecurrenceOptionsColumns = null;
 
     public function supportsRecurringSeries(): bool
     {
@@ -135,64 +136,43 @@ final class EventRepository
 
     public function create(array $data): int
     {
-        if ($this->hasRecurringSeriesColumn()) {
-            $stmt = db()->prepare(
-                'INSERT INTO clan_events (
-                    clan_id, event_name, event_description, event_location, host_name, host_discord_user_id, event_start_utc,
-                    duration_minutes, image_url, discord_channel_id, discord_mention_role_id, create_voice_chat_for_event, is_active, is_recurring_weekly, recurring_until_utc, recurring_series_id
-                ) VALUES (
-                    :clan_id, :event_name, :event_description, :event_location, :host_name, :host_discord_user_id, :event_start_utc,
-                    :duration_minutes, :image_url, :discord_channel_id, :discord_mention_role_id, :create_voice_chat_for_event, :is_active, :is_recurring_weekly, :recurring_until_utc, :recurring_series_id
-                )'
-            );
+        $columns = [
+            'clan_id',
+            'event_name',
+            'event_description',
+            'event_location',
+            'host_name',
+            'host_discord_user_id',
+            'event_start_utc',
+            'duration_minutes',
+            'image_url',
+            'discord_channel_id',
+            'discord_mention_role_id',
+            'create_voice_chat_for_event',
+            'is_active',
+            'is_recurring_weekly',
+            'recurring_until_utc',
+        ];
 
-            $stmt->execute([
-                'clan_id' => currentClanId(),
-                'event_name' => $data['event_name'],
-                'event_description' => $data['event_description'],
-                'event_location' => $data['event_location'] ?? null,
-                'host_name' => $data['host_name'],
-                'host_discord_user_id' => $data['host_discord_user_id'] ?: null,
-                'event_start_utc' => $data['event_start_utc'],
-                'duration_minutes' => $data['duration_minutes'] !== '' ? (int) $data['duration_minutes'] : null,
-                'image_url' => $data['image_url'],
-                'discord_channel_id' => $data['discord_channel_id'],
-                'discord_mention_role_id' => ($data['discord_mention_role_id'] ?? '') !== '' ? $data['discord_mention_role_id'] : null,
-                'create_voice_chat_for_event' => $data['create_voice_chat_for_event'] ?? 0,
-                'is_active' => $data['is_active'],
-                'is_recurring_weekly' => $data['is_recurring_weekly'],
-                'recurring_until_utc' => $data['recurring_until_utc'],
-                'recurring_series_id' => $data['recurring_series_id'] ?: null,
-            ]);
-        } else {
-            $stmt = db()->prepare(
-                'INSERT INTO clan_events (
-                    clan_id, event_name, event_description, event_location, host_name, host_discord_user_id, event_start_utc,
-                    duration_minutes, image_url, discord_channel_id, discord_mention_role_id, create_voice_chat_for_event, is_active, is_recurring_weekly, recurring_until_utc
-                ) VALUES (
-                    :clan_id, :event_name, :event_description, :event_location, :host_name, :host_discord_user_id, :event_start_utc,
-                    :duration_minutes, :image_url, :discord_channel_id, :discord_mention_role_id, :create_voice_chat_for_event, :is_active, :is_recurring_weekly, :recurring_until_utc
-                )'
-            );
+        $params = $this->eventWriteParams($data);
 
-            $stmt->execute([
-                'clan_id' => currentClanId(),
-                'event_name' => $data['event_name'],
-                'event_description' => $data['event_description'],
-                'event_location' => $data['event_location'] ?? null,
-                'host_name' => $data['host_name'],
-                'host_discord_user_id' => $data['host_discord_user_id'] ?: null,
-                'event_start_utc' => $data['event_start_utc'],
-                'duration_minutes' => $data['duration_minutes'] !== '' ? (int) $data['duration_minutes'] : null,
-                'image_url' => $data['image_url'],
-                'discord_channel_id' => $data['discord_channel_id'],
-                'discord_mention_role_id' => ($data['discord_mention_role_id'] ?? '') !== '' ? $data['discord_mention_role_id'] : null,
-                'create_voice_chat_for_event' => $data['create_voice_chat_for_event'] ?? 0,
-                'is_active' => $data['is_active'],
-                'is_recurring_weekly' => $data['is_recurring_weekly'],
-                'recurring_until_utc' => $data['recurring_until_utc'],
-            ]);
+        if ($this->hasRecurrenceOptionsColumns()) {
+            $columns[] = 'recurrence_interval';
+            $columns[] = 'recurrence_unit';
+            $params['recurrence_interval'] = max(1, (int) ($data['recurrence_interval'] ?? 1));
+            $params['recurrence_unit'] = $this->normaliseRecurrenceUnitForStorage((string) ($data['recurrence_unit'] ?? 'weeks'));
         }
+
+        if ($this->hasRecurringSeriesColumn()) {
+            $columns[] = 'recurring_series_id';
+            $params['recurring_series_id'] = ($data['recurring_series_id'] ?? '') !== '' ? $data['recurring_series_id'] : null;
+        }
+
+        $placeholders = array_map(static fn (string $column): string => ':' . $column, $columns);
+        $stmt = db()->prepare(
+            'INSERT INTO clan_events (' . implode(', ', $columns) . ') VALUES (' . implode(', ', $placeholders) . ')'
+        );
+        $stmt->execute($params);
 
         $eventId = (int) db()->lastInsertId();
         $this->saveEventRoles($eventId, $data['preferred_roles'] ?? []);
@@ -202,85 +182,43 @@ final class EventRepository
 
     public function update(int $id, array $data): void
     {
-        if ($this->hasRecurringSeriesColumn()) {
-            $stmt = db()->prepare(
-                'UPDATE clan_events SET
-                    event_name = :event_name,
-                    event_description = :event_description,
-                    event_location = :event_location,
-                    host_name = :host_name,
-                    host_discord_user_id = :host_discord_user_id,
-                    event_start_utc = :event_start_utc,
-                    duration_minutes = :duration_minutes,
-                    image_url = :image_url,
-                    discord_channel_id = :discord_channel_id,
-                    discord_mention_role_id = :discord_mention_role_id,
-                    create_voice_chat_for_event = :create_voice_chat_for_event,
-                    is_active = :is_active,
-                    is_recurring_weekly = :is_recurring_weekly,
-                    recurring_until_utc = :recurring_until_utc,
-                    recurring_series_id = :recurring_series_id
-                 WHERE id = :id AND clan_id = :clan_id'
-            );
+        $columns = [
+            'event_name',
+            'event_description',
+            'event_location',
+            'host_name',
+            'host_discord_user_id',
+            'event_start_utc',
+            'duration_minutes',
+            'image_url',
+            'discord_channel_id',
+            'discord_mention_role_id',
+            'create_voice_chat_for_event',
+            'is_active',
+            'is_recurring_weekly',
+            'recurring_until_utc',
+        ];
 
-            $stmt->execute([
-                'id' => $id,
-                'clan_id' => currentClanId(),
-                'event_name' => $data['event_name'],
-                'event_description' => $data['event_description'],
-                'event_location' => $data['event_location'] ?? null,
-                'host_name' => $data['host_name'],
-                'host_discord_user_id' => $data['host_discord_user_id'] ?: null,
-                'event_start_utc' => $data['event_start_utc'],
-                'duration_minutes' => $data['duration_minutes'] !== '' ? (int) $data['duration_minutes'] : null,
-                'image_url' => $data['image_url'],
-                'discord_channel_id' => $data['discord_channel_id'],
-                'discord_mention_role_id' => ($data['discord_mention_role_id'] ?? '') !== '' ? $data['discord_mention_role_id'] : null,
-                'create_voice_chat_for_event' => $data['create_voice_chat_for_event'] ?? 0,
-                'is_active' => $data['is_active'],
-                'is_recurring_weekly' => $data['is_recurring_weekly'],
-                'recurring_until_utc' => $data['recurring_until_utc'],
-                'recurring_series_id' => $data['recurring_series_id'] ?: null,
-            ]);
-        } else {
-            $stmt = db()->prepare(
-                'UPDATE clan_events SET
-                    event_name = :event_name,
-                    event_description = :event_description,
-                    event_location = :event_location,
-                    host_name = :host_name,
-                    host_discord_user_id = :host_discord_user_id,
-                    event_start_utc = :event_start_utc,
-                    duration_minutes = :duration_minutes,
-                    image_url = :image_url,
-                    discord_channel_id = :discord_channel_id,
-                    discord_mention_role_id = :discord_mention_role_id,
-                    create_voice_chat_for_event = :create_voice_chat_for_event,
-                    is_active = :is_active,
-                    is_recurring_weekly = :is_recurring_weekly,
-                    recurring_until_utc = :recurring_until_utc
-                 WHERE id = :id AND clan_id = :clan_id'
-            );
+        $params = $this->eventWriteParams($data);
+        $params['id'] = $id;
 
-            $stmt->execute([
-                'id' => $id,
-                'clan_id' => currentClanId(),
-                'event_name' => $data['event_name'],
-                'event_description' => $data['event_description'],
-                'event_location' => $data['event_location'] ?? null,
-                'host_name' => $data['host_name'],
-                'host_discord_user_id' => $data['host_discord_user_id'] ?: null,
-                'event_start_utc' => $data['event_start_utc'],
-                'duration_minutes' => $data['duration_minutes'] !== '' ? (int) $data['duration_minutes'] : null,
-                'image_url' => $data['image_url'],
-                'discord_channel_id' => $data['discord_channel_id'],
-                'discord_mention_role_id' => ($data['discord_mention_role_id'] ?? '') !== '' ? $data['discord_mention_role_id'] : null,
-                'create_voice_chat_for_event' => $data['create_voice_chat_for_event'] ?? 0,
-                'is_active' => $data['is_active'],
-                'is_recurring_weekly' => $data['is_recurring_weekly'],
-                'recurring_until_utc' => $data['recurring_until_utc'],
-            ]);
+        if ($this->hasRecurrenceOptionsColumns()) {
+            $columns[] = 'recurrence_interval';
+            $columns[] = 'recurrence_unit';
+            $params['recurrence_interval'] = max(1, (int) ($data['recurrence_interval'] ?? 1));
+            $params['recurrence_unit'] = $this->normaliseRecurrenceUnitForStorage((string) ($data['recurrence_unit'] ?? 'weeks'));
         }
+
+        if ($this->hasRecurringSeriesColumn()) {
+            $columns[] = 'recurring_series_id';
+            $params['recurring_series_id'] = ($data['recurring_series_id'] ?? '') !== '' ? $data['recurring_series_id'] : null;
+        }
+
+        $assignments = array_map(static fn (string $column): string => $column . ' = :' . $column, $columns);
+        $stmt = db()->prepare(
+            'UPDATE clan_events SET ' . implode(', ', $assignments) . ' WHERE id = :id AND clan_id = :clan_id'
+        );
+        $stmt->execute($params);
 
         $this->saveEventRoles($id, $data['preferred_roles'] ?? []);
     }
@@ -722,6 +660,50 @@ public function enqueueBotCommand(
     }
 
 
+    private function eventWriteParams(array $data): array
+    {
+        return [
+            'clan_id' => currentClanId(),
+            'event_name' => $data['event_name'],
+            'event_description' => $data['event_description'],
+            'event_location' => $data['event_location'] ?? null,
+            'host_name' => $data['host_name'],
+            'host_discord_user_id' => $data['host_discord_user_id'] ?: null,
+            'event_start_utc' => $data['event_start_utc'],
+            'duration_minutes' => $data['duration_minutes'] !== '' ? (int) $data['duration_minutes'] : null,
+            'image_url' => $data['image_url'],
+            'discord_channel_id' => $data['discord_channel_id'],
+            'discord_mention_role_id' => ($data['discord_mention_role_id'] ?? '') !== '' ? $data['discord_mention_role_id'] : null,
+            'create_voice_chat_for_event' => $data['create_voice_chat_for_event'] ?? 0,
+            'is_active' => $data['is_active'],
+            'is_recurring_weekly' => $data['is_recurring_weekly'],
+            'recurring_until_utc' => $data['recurring_until_utc'],
+        ];
+    }
+
+    private function normaliseRecurrenceUnitForStorage(string $unit): string
+    {
+        $unit = strtolower(trim($unit));
+        if ($unit === 'day') {
+            $unit = 'days';
+        }
+        if ($unit === 'week') {
+            $unit = 'weeks';
+        }
+        return in_array($unit, ['days', 'weeks'], true) ? $unit : 'weeks';
+    }
+
+    private function recurrenceIntervalForRow(array $row): int
+    {
+        $interval = (int) ($row['recurrence_interval'] ?? 1);
+        return $interval > 0 ? $interval : 1;
+    }
+
+    private function recurrenceUnitForRow(array $row): string
+    {
+        return $this->normaliseRecurrenceUnitForStorage((string) ($row['recurrence_unit'] ?? 'weeks'));
+    }
+
     private function attachRolesToRows(array $rows): array
     {
         if ($rows === []) {
@@ -776,9 +758,25 @@ public function enqueueBotCommand(
         return $this->hasRecurringSeriesId;
     }
 
+    private function hasRecurrenceOptionsColumns(): bool
+    {
+        if ($this->hasRecurrenceOptionsColumns !== null) {
+            return $this->hasRecurrenceOptionsColumns;
+        }
+
+        $intervalStmt = db()->prepare("SHOW COLUMNS FROM clan_events LIKE 'recurrence_interval'");
+        $intervalStmt->execute();
+        $unitStmt = db()->prepare("SHOW COLUMNS FROM clan_events LIKE 'recurrence_unit'");
+        $unitStmt->execute();
+        $this->hasRecurrenceOptionsColumns = (bool) $intervalStmt->fetch() && (bool) $unitStmt->fetch();
+
+        return $this->hasRecurrenceOptionsColumns;
+    }
+
     private function expandRecurringForWeek(array $rows, string $weekStartUtc, string $weekEndUtc): array
     {
         $weekStartLocal = utcToClanLocal($weekStartUtc);
+        $weekEndLocal = utcToClanLocal($weekEndUtc);
         $expanded = [];
 
         foreach ($rows as $row) {
@@ -793,24 +791,40 @@ public function enqueueBotCommand(
             }
 
             $anchorLocal = utcToClanLocal((string) $row['event_start_utc']);
-            $occurrenceLocal = $weekStartLocal
-                ->modify('+' . ($anchorLocal->format('N') - 1) . ' days')
-                ->setTime((int) $anchorLocal->format('H'), (int) $anchorLocal->format('i'), 0);
-            $occurrenceUtc = $occurrenceLocal->setTimezone(utcTimezone())->format('Y-m-d H:i:s');
+            $interval = $this->recurrenceIntervalForRow($row);
+            $unit = $this->recurrenceUnitForRow($row);
+            $step = '+' . $interval . ' ' . $unit;
+            $occurrenceLocal = $anchorLocal;
+            $guard = 0;
 
-            if ($occurrenceUtc < $weekStartUtc || $occurrenceUtc >= $weekEndUtc) {
-                continue;
-            }
-            if ($occurrenceUtc < (string) $row['event_start_utc']) {
-                continue;
-            }
-            if (!empty($row['recurring_until_utc']) && $occurrenceUtc > (string) $row['recurring_until_utc']) {
-                continue;
+            while ($occurrenceLocal < $weekStartLocal) {
+                $occurrenceLocal = $occurrenceLocal->modify($step);
+                $guard++;
+                if ($guard > 1000) {
+                    break;
+                }
             }
 
-            $row['event_start_utc'] = $occurrenceUtc;
-            $row['recurring_series_id'] = null;
-            $expanded[] = $row;
+            while ($occurrenceLocal < $weekEndLocal) {
+                $occurrenceUtc = $occurrenceLocal->setTimezone(utcTimezone())->format('Y-m-d H:i:s');
+
+                if ($occurrenceUtc >= (string) $row['event_start_utc']
+                    && (empty($row['recurring_until_utc']) || $occurrenceUtc <= (string) $row['recurring_until_utc'])
+                    && $occurrenceUtc >= $weekStartUtc
+                    && $occurrenceUtc < $weekEndUtc
+                ) {
+                    $eventRow = $row;
+                    $eventRow['event_start_utc'] = $occurrenceUtc;
+                    $eventRow['recurring_series_id'] = null;
+                    $expanded[] = $eventRow;
+                }
+
+                $occurrenceLocal = $occurrenceLocal->modify($step);
+                $guard++;
+                if ($guard > 1000) {
+                    break;
+                }
+            }
         }
 
         usort($expanded, static function (array $a, array $b): int {

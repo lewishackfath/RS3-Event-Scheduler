@@ -14,6 +14,14 @@ $preferredRoles = is_array($formValues['preferred_roles'] ?? null) ? $formValues
 $currentPage = basename((string) ($_SERVER['PHP_SELF'] ?? ''));
 $isEditPage = $currentPage === 'event_edit.php';
 $isSeriesEvent = $isEditPage && isset($event) && trim((string) ($event['recurring_series_id'] ?? '')) !== '';
+$recurrenceInterval = (int) ($formValues['recurrence_interval'] ?? 1);
+if ($recurrenceInterval < 1) {
+    $recurrenceInterval = 1;
+}
+$recurrenceUnit = strtolower(trim((string) ($formValues['recurrence_unit'] ?? 'weeks')));
+if (!in_array($recurrenceUnit, ['days', 'weeks'], true)) {
+    $recurrenceUnit = 'weeks';
+}
 ?>
 <div class="card">
     <form method="post">
@@ -66,13 +74,24 @@ $isSeriesEvent = $isEditPage && isset($event) && trim((string) ($event['recurrin
 
         <div class="grid grid-2">
             <div class="field">
-                <label><input type="checkbox" id="is_recurring_weekly" name="is_recurring_weekly" value="1" <?= !empty($formValues['is_recurring_weekly']) ? 'checked' : '' ?>> Weekly recurring event</label>
-                <div class="muted" style="margin-top:6px;">Recurring events repeat each week on the same weekday and time.</div>
+                <label><input type="checkbox" id="is_recurring_weekly" name="is_recurring_weekly" value="1" <?= !empty($formValues['is_recurring_weekly']) ? 'checked' : '' ?>> Recurring event</label>
+                <div class="muted" style="margin-top:6px;">The app creates each recurrence in advance so Discord posts and scheduled events can be edited instead of duplicated.</div>
+            </div>
+            <div class="field" id="recurrence-options-wrap" style="<?= !empty($formValues['is_recurring_weekly']) ? '' : 'display:none;' ?>">
+                <label for="recurrence_interval">Repeat Every</label>
+                <div style="display:grid;grid-template-columns:minmax(90px,120px) minmax(120px,1fr);gap:12px;align-items:center;">
+                    <input type="number" id="recurrence_interval" name="recurrence_interval" min="1" max="365" step="1" value="<?= e((string) $recurrenceInterval) ?>">
+                    <select id="recurrence_unit" name="recurrence_unit">
+                        <option value="weeks" <?= $recurrenceUnit === 'weeks' ? 'selected' : '' ?>>Weeks</option>
+                        <option value="days" <?= $recurrenceUnit === 'days' ? 'selected' : '' ?>>Days</option>
+                    </select>
+                </div>
+                <div class="muted" style="margin-top:6px;">Examples: 1 week = weekly, 2 weeks = fortnightly, 3 days = every third day.</div>
             </div>
             <div class="field" id="recurring-until-wrap" style="<?= !empty($formValues['is_recurring_weekly']) ? '' : 'display:none;' ?>">
                 <label for="recurring_until_date">Recurring Until</label>
                 <input type="date" id="recurring_until_date" name="recurring_until_date" value="<?= e((string) ($formValues['recurring_until_date'] ?? '')) ?>">
-                <div class="muted" style="margin-top:6px;">Required for weekly recurring events. The app now creates each weekly occurrence in advance.</div>
+                <div class="muted" style="margin-top:6px;">Required for recurring events. Occurrences are generated up to and including this date.</div>
             </div>
         </div>
 
@@ -157,6 +176,7 @@ $isSeriesEvent = $isEditPage && isset($event) && trim((string) ($event['recurrin
     const results = document.getElementById('host-picker-results');
     const recurringToggle = document.getElementById('is_recurring_weekly');
     const recurringWrap = document.getElementById('recurring-until-wrap');
+    const recurrenceOptionsWrap = document.getElementById('recurrence-options-wrap');
     const channelSelect = document.getElementById('discord_channel_id');
     const channelStatus = document.getElementById('channel-picker-status');
     const roleSelect = document.getElementById('discord_mention_role_id');
@@ -455,7 +475,11 @@ $isSeriesEvent = $isEditPage && isset($event) && trim((string) ($event['recurrin
     });
 
     recurringToggle.addEventListener('change', function () {
-        recurringWrap.style.display = recurringToggle.checked ? '' : 'none';
+        const displayValue = recurringToggle.checked ? '' : 'none';
+        recurringWrap.style.display = displayValue;
+        if (recurrenceOptionsWrap) {
+            recurrenceOptionsWrap.style.display = displayValue;
+        }
     });
 
     if (utcStartInput && utcStartInput.value) {

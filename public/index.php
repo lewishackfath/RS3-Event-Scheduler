@@ -236,7 +236,8 @@ renderHeader('Weekly Schedule');
                                         <?php if ($item['is_past']): ?><span class="pill journal-past-pill">Past Event</span><?php endif; ?>
                                         <?php if ($item['is_today']): ?><span class="badge">Today</span><?php endif; ?>
                                         <?php if (!empty($event['recurring_series_id'])): ?><span class="pill">Recurring</span><?php endif; ?>
-                                        <?php if (!empty($event['is_recurring_weekly'])): ?><span class="badge">Weekly</span><?php endif; ?>
+                                        <?php $recurrenceLabel = recurrenceDisplayLabel($event); ?>
+                                        <?php if ($recurrenceLabel !== ''): ?><span class="badge"><?= e($recurrenceLabel) ?></span><?php endif; ?>
                                     </div>
                                 </div>
                             </div>

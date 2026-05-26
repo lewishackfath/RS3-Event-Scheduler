@@ -36,6 +36,8 @@ $formValues = [
     'create_voice_chat_for_event' => (int) ($event['create_voice_chat_for_event'] ?? 0),
     'is_active' => (int) $event['is_active'],
     'is_recurring_weekly' => (int) ($event['is_recurring_weekly'] ?? 0),
+    'recurrence_interval' => (int) ($event['recurrence_interval'] ?? 1),
+    'recurrence_unit' => (string) ($event['recurrence_unit'] ?? 'weeks'),
     'recurring_until_date' => $recurringUntilDate,
     'recurring_edit_scope' => 'single',
 ];

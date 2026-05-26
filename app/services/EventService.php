@@ -13,8 +13,10 @@ final class EventService
         $hostName = trim((string) ($input['host_name'] ?? ''));
         $hostDiscordUserId = trim((string) ($input['host_discord_user_id'] ?? ''));
         $eventStartUtcInput = trim((string) ($input['event_start_utc_input'] ?? ''));
-        $isRecurringWeekly = isset($input['is_recurring_weekly']) ? 1 : 0;
+        $isRecurring = isset($input['is_recurring_weekly']) ? 1 : 0;
         $recurringUntilDate = trim((string) ($input['recurring_until_date'] ?? ''));
+        $recurrenceInterval = $this->normaliseRecurrenceInterval($input['recurrence_interval'] ?? 1);
+        $recurrenceUnit = $this->normaliseRecurrenceUnit((string) ($input['recurrence_unit'] ?? 'weeks'));
 
         if ($eventName === '') {
             throw new InvalidArgumentException('Event name is required.');
@@ -22,11 +24,16 @@ final class EventService
         if ($eventDate === '' || $eventTime === '') {
             throw new InvalidArgumentException('Event date and time are required.');
         }
-        if ($isRecurringWeekly === 1 && $recurringUntilDate === '') {
-            throw new InvalidArgumentException('Recurring weekly events now require a recurring until date.');
+        if ($isRecurring === 1 && $recurringUntilDate === '') {
+            throw new InvalidArgumentException('Recurring events require a recurring until date.');
         }
-        if ($isRecurringWeekly === 1 && $recurringUntilDate < $eventDate) {
+        if ($isRecurring === 1 && $recurringUntilDate < $eventDate) {
             throw new InvalidArgumentException('Recurring end date cannot be earlier than the event date.');
+        }
+
+        if ($isRecurring !== 1) {
+            $recurrenceInterval = 1;
+            $recurrenceUnit = 'weeks';
         }
 
         $eventStartUtc = $eventStartUtcInput !== ''
@@ -47,14 +54,54 @@ final class EventService
             'preferred_roles' => $this->normalisePreferredRoles(is_array($input['preferred_roles'] ?? null) ? $input['preferred_roles'] : []),
             'create_voice_chat_for_event' => isset($input['create_voice_chat_for_event']) ? 1 : 0,
             'is_active' => isset($input['is_active']) ? 1 : 0,
-            'is_recurring_weekly' => $isRecurringWeekly,
-            'recurring_until_utc' => $isRecurringWeekly === 1
+            // Column name kept for backwards compatibility. It now means "is recurring".
+            'is_recurring_weekly' => $isRecurring,
+            'recurrence_interval' => $recurrenceInterval,
+            'recurrence_unit' => $recurrenceUnit,
+            'recurring_until_utc' => $isRecurring === 1
                 ? clanLocalToUtc($recurringUntilDate, '23:59')
                 : null,
             'recurring_series_id' => trim((string) ($input['recurring_series_id'] ?? '')),
         ];
     }
 
+    private function normaliseRecurrenceInterval(mixed $value): int
+    {
+        $value = trim((string) $value);
+        if ($value === '') {
+            return 1;
+        }
+        if (!preg_match('/^\d+$/', $value)) {
+            throw new InvalidArgumentException('Recurring interval must be a whole number.');
+        }
+
+        $interval = (int) $value;
+        if ($interval < 1) {
+            throw new InvalidArgumentException('Recurring interval must be at least 1.');
+        }
+        if ($interval > 365) {
+            throw new InvalidArgumentException('Recurring interval cannot be greater than 365.');
+        }
+
+        return $interval;
+    }
+
+    private function normaliseRecurrenceUnit(string $value): string
+    {
+        $value = strtolower(trim($value));
+        if ($value === 'day') {
+            $value = 'days';
+        }
+        if ($value === 'week') {
+            $value = 'weeks';
+        }
+
+        if (!in_array($value, ['days', 'weeks'], true)) {
+            throw new InvalidArgumentException('Recurring unit must be days or weeks.');
+        }
+
+        return $value;
+    }
 
     private function normaliseDiscordSnowflake(string $value): string
     {
@@ -159,6 +206,8 @@ final class EventService
             $data['is_recurring_weekly'] = 0;
             $data['recurring_until_utc'] = null;
             $data['recurring_series_id'] = null;
+            $data['recurrence_interval'] = 1;
+            $data['recurrence_unit'] = 'weeks';
             $repo->update((int) $event['id'], $data);
             return;
         }
@@ -182,6 +231,8 @@ final class EventService
         $data['recurring_series_id'] = null;
         $data['is_recurring_weekly'] = 0;
         $data['recurring_until_utc'] = null;
+        $data['recurrence_interval'] = 1;
+        $data['recurrence_unit'] = 'weeks';
         $this->replaceSeriesEventsInPlace($repo, $existingSeriesEvents, [$data]);
     }
 
@@ -238,15 +289,26 @@ final class EventService
         $untilLocal = utcToClanLocal((string) $data['recurring_until_utc']);
         $events = [];
         $cursor = $startLocal;
+        $interval = max(1, (int) ($data['recurrence_interval'] ?? 1));
+        $unit = $this->normaliseRecurrenceUnit((string) ($data['recurrence_unit'] ?? 'weeks'));
+        $step = '+' . $interval . ' ' . $unit;
+        $guard = 0;
 
         while ($cursor <= $untilLocal) {
             $eventData = $data;
             $eventData['event_start_utc'] = $cursor->setTimezone(utcTimezone())->format('Y-m-d H:i:s');
             $eventData['is_recurring_weekly'] = 1;
+            $eventData['recurrence_interval'] = $interval;
+            $eventData['recurrence_unit'] = $unit;
             $eventData['recurring_until_utc'] = $data['recurring_until_utc'];
             $eventData['recurring_series_id'] = $seriesId;
             $events[] = $eventData;
-            $cursor = $cursor->modify('+7 days');
+
+            $cursor = $cursor->modify($step);
+            $guard++;
+            if ($guard > 500) {
+                throw new RuntimeException('Recurring series generated too many events. Please use a shorter date range or a larger interval.');
+            }
         }
 
         return $events;

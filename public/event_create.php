@@ -21,6 +21,8 @@ $formValues = [
     'create_voice_chat_for_event' => 0,
     'is_active' => 1,
     'is_recurring_weekly' => 0,
+    'recurrence_interval' => 1,
+    'recurrence_unit' => 'weeks',
     'recurring_until_date' => '',
     'recurring_edit_scope' => 'single',
 ];
