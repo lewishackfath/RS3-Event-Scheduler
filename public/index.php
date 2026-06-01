@@ -129,6 +129,20 @@ usort($displayEvents, static function (array $a, array $b): int {
 
 $pastCount = count(array_filter($displayEvents, static fn (array $item): bool => (bool) $item['is_past']));
 $upcomingCount = count($displayEvents) - $pastCount;
+$posterGalleryItems = [];
+foreach ($displayEvents as $item) {
+    $posterUrl = eventPosterImageUrl((array) $item['event']);
+    if ($posterUrl === '') {
+        continue;
+    }
+
+    $posterGalleryItems[] = [
+        'event' => $item['event'],
+        'poster_url' => $posterUrl,
+        'local' => $item['local'],
+        'is_past' => $item['is_past'],
+    ];
+}
 $prev = $range['week_start_local']->modify('-7 days')->format('Y-m-d');
 $next = $range['week_start_local']->modify('+7 days')->format('Y-m-d');
 $currentWeekDate = $range['week_start_local']->format('Y-m-d');
@@ -212,7 +226,6 @@ renderHeader('Weekly Schedule');
                 if ($thumbnailUrl === '') {
                     $thumbnailUrl = eventDisplayImageUrl($event);
                 }
-                $posterUrl = eventPosterImageUrl($event);
                 $tearClass = $tearClasses[$index % count($tearClasses)];
                 ?>
                 <article class="journal-event-card <?= e($tearClass) ?><?= $item['is_today'] ? ' event-is-today' : '' ?><?= $item['is_past'] ? ' is-past-event is-hidden-by-filter' : '' ?>" data-equalize-card<?= $item['is_past'] ? ' data-past-event="1"' : '' ?>>
@@ -285,6 +298,41 @@ renderHeader('Weekly Schedule');
             <?php endforeach; ?>
         </div>
     </section>
+
+    <?php if (!empty($posterGalleryItems)): ?>
+        <section class="journal-poster-carousel-section mt-24" aria-labelledby="eventPosterCarouselTitle">
+            <div class="journal-section-heading journal-heading-card">
+                <div>
+                    <span class="journal-kicker-small">Event Artwork</span>
+                    <h3 id="eventPosterCarouselTitle">Poster Gallery</h3>
+                </div>
+                <div class="muted journal-poster-carousel-count"><?= count($posterGalleryItems) ?> poster<?= count($posterGalleryItems) === 1 ? '' : 's' ?></div>
+            </div>
+
+            <div class="journal-poster-carousel-shell">
+                <button type="button" class="journal-carousel-button" data-carousel-prev aria-label="Scroll poster gallery left">‹</button>
+                <div class="journal-poster-carousel" id="eventPosterCarousel" tabindex="0" aria-label="Event poster gallery">
+                    <?php foreach ($posterGalleryItems as $galleryItem): ?>
+                        <?php
+                        $galleryEvent = $galleryItem['event'];
+                        $galleryLocal = $galleryItem['local'];
+                        $galleryIsPast = (bool) $galleryItem['is_past'];
+                        ?>
+                        <figure class="journal-poster-carousel-card<?= $galleryIsPast ? ' is-past-event is-hidden-by-filter' : '' ?>" data-carousel-poster<?= $galleryIsPast ? ' data-past-event="1"' : '' ?>>
+                            <a class="journal-poster-carousel-link" href="<?= e((string) $galleryItem['poster_url']) ?>" target="_blank" rel="noopener noreferrer">
+                                <img class="journal-poster-carousel-image" src="<?= e((string) $galleryItem['poster_url']) ?>" alt="<?= e($galleryEvent['event_name']) ?> poster" loading="lazy">
+                            </a>
+                            <figcaption class="journal-poster-carousel-caption">
+                                <strong><?= e($galleryEvent['event_name']) ?></strong>
+                                <span><?= e($galleryLocal->format('D j M • g:i A')) ?></span>
+                            </figcaption>
+                        </figure>
+                    <?php endforeach; ?>
+                </div>
+                <button type="button" class="journal-carousel-button" data-carousel-next aria-label="Scroll poster gallery right">›</button>
+            </div>
+        </section>
+    <?php endif; ?>
 <?php endif; ?>
 
 <script>
@@ -347,6 +395,11 @@ renderHeader('Weekly Schedule');
             }
         });
 
+        document.querySelectorAll('[data-carousel-poster]').forEach(function (posterCard) {
+            const isPast = posterCard.hasAttribute('data-past-event');
+            posterCard.classList.toggle('is-hidden-by-filter', isPast && !showPast);
+        });
+
         if (visibleEventCount) {
             visibleEventCount.textContent = String(visibleCount);
         }
@@ -364,7 +417,25 @@ renderHeader('Weekly Schedule');
     });
     window.addEventListener('resize', equalizeCards);
 
-    document.querySelectorAll('.journal-event-image, .journal-event-poster-image').forEach(function (img) {
+    const posterCarousel = document.getElementById('eventPosterCarousel');
+    if (posterCarousel) {
+        const scrollCarousel = function (direction) {
+            const visibleCard = posterCarousel.querySelector('[data-carousel-poster]:not(.is-hidden-by-filter)');
+            const cardWidth = visibleCard ? visibleCard.getBoundingClientRect().width : 280;
+            posterCarousel.scrollBy({ left: direction * (cardWidth + 24), behavior: 'smooth' });
+        };
+
+        const prevButton = document.querySelector('[data-carousel-prev]');
+        const nextButton = document.querySelector('[data-carousel-next]');
+        if (prevButton) {
+            prevButton.addEventListener('click', function () { scrollCarousel(-1); });
+        }
+        if (nextButton) {
+            nextButton.addEventListener('click', function () { scrollCarousel(1); });
+        }
+    }
+
+    document.querySelectorAll('.journal-event-image').forEach(function (img) {
         if (img.complete) {
             return;
         }

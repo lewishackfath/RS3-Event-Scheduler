@@ -44,6 +44,9 @@ $formValues = [
 ];
 
 $isSeriesEvent = trim((string) ($event['recurring_series_id'] ?? '')) !== '';
+if ($isSeriesEvent) {
+    $formValues['recurring_edit_scope'] = 'all';
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $formValues = array_merge($formValues, $_POST);

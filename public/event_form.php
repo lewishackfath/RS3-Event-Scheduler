@@ -116,12 +116,12 @@ if (!in_array($recurrenceUnit, ['days', 'weeks'], true)) {
         <div class="field">
             <label for="image_url">Event Poster Image URL</label>
             <input type="url" id="image_url" name="image_url" value="<?= e($formValues['image_url'] ?? '') ?>">
-            <div class="muted" style="margin-top:6px;">Shown on the website event card and as the full-size image at the bottom of the Discord embed.</div>
+            <div class="muted" style="margin-top:6px;">Shown in the poster gallery on the schedule page and as the full-size image at the bottom of the Discord embed.</div>
         </div>
         <div class="field">
-            <label for="thumbnail_url">Discord Thumbnail Image URL</label>
+            <label for="thumbnail_url">Thumbnail Image URL</label>
             <input type="url" id="thumbnail_url" name="thumbnail_url" value="<?= e($formValues['thumbnail_url'] ?? '') ?>">
-            <div class="muted" style="margin-top:6px;">Optional. Shown as the small thumbnail in the Discord embed.</div>
+            <div class="muted" style="margin-top:6px;">Optional. Shown at the top of the website event card and as the small thumbnail in the Discord embed.</div>
         </div>
         <div class="field">
             <label for="event_description">Notes / Description</label>

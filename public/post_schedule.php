@@ -117,8 +117,7 @@ renderHeader('Discord Publishing');
 
     <div class="card">
         <h3 class="mt-0">Weekly Summary Preview</h3>
-        <?php $summaryEmbeds = buildWeeklySummaryEmbeds($events, $weekRange['week_start_local']); ?>
-        <?php $summaryEmbed = $summaryEmbeds[0] ?? buildWeeklySummaryEmbed($events, $weekRange['week_start_local']); ?>
+        <?php $summaryEmbed = buildWeeklySummaryEmbed($events, $weekRange['week_start_local']); ?>
         <div><strong><?= e($summaryEmbed['title']) ?></strong></div>
         <div class="muted mt-6 mb-12"><?= e($summaryEmbed['description']) ?></div>
         <?php foreach (($summaryEmbed['fields'] ?? []) as $field): ?>
@@ -127,21 +126,6 @@ renderHeader('Discord Publishing');
                 <?= nl2br(e((string) $field['value'])) ?>
             </div>
         <?php endforeach; ?>
-        <?php $posterPreviewEmbeds = array_slice($summaryEmbeds, 1); ?>
-        <?php if ($posterPreviewEmbeds !== []): ?>
-            <div class="mt-14">
-                <strong>Poster embeds included</strong>
-                <div class="muted mt-6 mb-10">These poster images will be attached underneath the weekly schedule embed in Discord.</div>
-                <?php foreach ($posterPreviewEmbeds as $posterEmbed): ?>
-                    <div class="weekly-poster-preview mb-10">
-                        <div><strong><?= e((string) ($posterEmbed['title'] ?? 'Event poster')) ?></strong></div>
-                        <?php if (!empty($posterEmbed['image']['url'])): ?>
-                            <img src="<?= e((string) $posterEmbed['image']['url']) ?>" alt="<?= e((string) ($posterEmbed['title'] ?? 'Event poster')) ?>" loading="lazy">
-                        <?php endif; ?>
-                    </div>
-                <?php endforeach; ?>
-            </div>
-        <?php endif; ?>
     </div>
 </div>
 <style>
@@ -151,20 +135,6 @@ renderHeader('Discord Publishing');
 }
 .date-picker::-webkit-calendar-picker-indicator {
     cursor: pointer;
-}
-.weekly-poster-preview {
-    padding: 10px;
-    border: 1px solid rgba(255,255,255,.12);
-    border-radius: 10px;
-    background: rgba(0,0,0,.18);
-}
-.weekly-poster-preview img {
-    display: block;
-    width: 100%;
-    max-height: 280px;
-    object-fit: contain;
-    margin-top: 8px;
-    border-radius: 8px;
 }
 </style>
 <?php renderFooter(); ?>
