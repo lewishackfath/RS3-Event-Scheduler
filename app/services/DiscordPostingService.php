@@ -388,11 +388,11 @@ final class DiscordPostingService
         $range = weekRangeFromDate($date);
         $events = $this->events->getForWeek($range['week_start_utc'], $range['week_end_utc']);
         $existing = $this->events->getWeeklyPost($range['week_start_utc']);
-        $embed = buildWeeklySummaryEmbed($events, $range['week_start_local']);
+        $embeds = buildWeeklySummaryEmbeds($events, $range['week_start_local']);
 
         if ($existing && !empty($existing['discord_message_id'])) {
             try {
-                editDiscordMessage((string) $existing['discord_channel_id'], (string) $existing['discord_message_id'], '', [$embed]);
+                editDiscordMessage((string) $existing['discord_channel_id'], (string) $existing['discord_message_id'], '', $embeds);
                 $this->events->recordWeeklyPost($range['week_start_utc'], (string) $existing['discord_channel_id'], (string) $existing['discord_message_id']);
 
                 return [[
@@ -426,7 +426,7 @@ final class DiscordPostingService
             ]];
         }
 
-        $response = postDiscordMessage($channelId, '', [$embed]);
+        $response = postDiscordMessage($channelId, '', $embeds);
         $messageId = (string) ($response['id'] ?? '');
         if ($messageId !== '') {
             $this->events->recordWeeklyPost($range['week_start_utc'], $channelId, $messageId);
