@@ -208,14 +208,18 @@ renderHeader('Weekly Schedule');
                 $event = $item['event'];
                 $durationLabel = formatEventDurationLabel(isset($event['duration_minutes']) ? (int) $event['duration_minutes'] : null);
                 $rolesHtml = formatPreferredRolesHtml((array) ($event['preferred_roles'] ?? []));
-                $imageUrl = eventDisplayImageUrl($event);
+                $thumbnailUrl = eventEmbedThumbnailUrl($event);
+                if ($thumbnailUrl === '') {
+                    $thumbnailUrl = eventDisplayImageUrl($event);
+                }
+                $posterUrl = eventPosterImageUrl($event);
                 $tearClass = $tearClasses[$index % count($tearClasses)];
                 ?>
                 <article class="journal-event-card <?= e($tearClass) ?><?= $item['is_today'] ? ' event-is-today' : '' ?><?= $item['is_past'] ? ' is-past-event is-hidden-by-filter' : '' ?>" data-equalize-card<?= $item['is_past'] ? ' data-past-event="1"' : '' ?>>
                     <div class="journal-event-card-inner">
-                        <div class="journal-event-media<?= $imageUrl === '' ? ' no-image' : '' ?>">
-                            <?php if ($imageUrl !== ''): ?>
-                                <img class="journal-event-image" src="<?= e($imageUrl) ?>" alt="<?= e($event['event_name']) ?>">
+                        <div class="journal-event-media<?= $thumbnailUrl === '' ? ' no-image' : '' ?>">
+                            <?php if ($thumbnailUrl !== ''): ?>
+                                <img class="journal-event-image journal-event-thumbnail-image" src="<?= e($thumbnailUrl) ?>" alt="<?= e($event['event_name']) ?> thumbnail" loading="lazy">
                             <?php else: ?>
                                 <div class="journal-event-placeholder" aria-hidden="true"><?= $item['is_past'] ? '☽' : '✦' ?></div>
                             <?php endif; ?>
@@ -272,6 +276,12 @@ renderHeader('Weekly Schedule');
                                     </div>
                                 <?php endif; ?>
                             </div>
+                            <?php if ($posterUrl !== ''): ?>
+                                <div class="journal-event-poster">
+                                    <div class="journal-event-poster-label">Event Poster</div>
+                                    <img class="journal-event-poster-image" src="<?= e($posterUrl) ?>" alt="<?= e($event['event_name']) ?> poster" loading="lazy">
+                                </div>
+                            <?php endif; ?>
                             <?php if ($canManage): ?>
                                 <?= renderJournalAdminActionsHtml($event, 'journal-mobile-actions') ?>
                             <?php endif; ?>
@@ -360,7 +370,7 @@ renderHeader('Weekly Schedule');
     });
     window.addEventListener('resize', equalizeCards);
 
-    document.querySelectorAll('.journal-event-image').forEach(function (img) {
+    document.querySelectorAll('.journal-event-image, .journal-event-poster-image').forEach(function (img) {
         if (img.complete) {
             return;
         }
