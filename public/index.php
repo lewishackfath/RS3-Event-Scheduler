@@ -276,12 +276,12 @@ renderHeader('Weekly Schedule');
                                     </div>
                                 <?php endif; ?>
                             </div>
-                            <?php if ($posterUrl !== ''): ?>
+                            <!--<?php if ($posterUrl !== ''): ?>
                                 <div class="journal-event-poster">
                                     <div class="journal-event-poster-label">Event Poster</div>
                                     <img class="journal-event-poster-image" src="<?= e($posterUrl) ?>" alt="<?= e($event['event_name']) ?> poster" loading="lazy">
                                 </div>
-                            <?php endif; ?>
+                            <?php endif; ?> -->
                             <?php if ($canManage): ?>
                                 <?= renderJournalAdminActionsHtml($event, 'journal-mobile-actions') ?>
                             <?php endif; ?>
