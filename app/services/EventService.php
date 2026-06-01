@@ -49,6 +49,7 @@ final class EventService
             'event_start_utc' => $eventStartUtc,
             'duration_minutes' => trim((string) ($input['duration_minutes'] ?? '')),
             'image_url' => trim((string) ($input['image_url'] ?? '')),
+            'thumbnail_url' => trim((string) ($input['thumbnail_url'] ?? '')),
             'discord_channel_id' => trim((string) ($input['discord_channel_id'] ?? '')),
             'discord_mention_role_id' => $this->normaliseDiscordSnowflake((string) ($input['discord_mention_role_id'] ?? '')),
             'preferred_roles' => $this->normalisePreferredRoles(is_array($input['preferred_roles'] ?? null) ? $input['preferred_roles'] : []),

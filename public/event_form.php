@@ -114,8 +114,14 @@ if (!in_array($recurrenceUnit, ['days', 'weeks'], true)) {
             <div class="muted" style="margin-top:6px;">When enabled, the Discord sync will create a temporary voice channel roughly <?= (int) appConfig()['discord']['event_voice_create_before_minutes'] ?> minutes before the event starts, allow everyone to view/join it, and only subscribed event attendees will be able to speak.</div>
         </div>
         <div class="field">
-            <label for="image_url">Custom Image URL</label>
+            <label for="image_url">Event Poster Image URL</label>
             <input type="url" id="image_url" name="image_url" value="<?= e($formValues['image_url'] ?? '') ?>">
+            <div class="muted" style="margin-top:6px;">Shown on the website event card and as the full-size image at the bottom of the Discord embed.</div>
+        </div>
+        <div class="field">
+            <label for="thumbnail_url">Discord Thumbnail Image URL</label>
+            <input type="url" id="thumbnail_url" name="thumbnail_url" value="<?= e($formValues['thumbnail_url'] ?? '') ?>">
+            <div class="muted" style="margin-top:6px;">Optional. Shown as the small thumbnail in the Discord embed.</div>
         </div>
         <div class="field">
             <label for="event_description">Notes / Description</label>

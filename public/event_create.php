@@ -17,6 +17,7 @@ $formValues = [
     'discord_mention_role_id' => '',
     'event_location' => '',
     'image_url' => '',
+    'thumbnail_url' => '',
     'event_description' => '',
     'create_voice_chat_for_event' => 0,
     'is_active' => 1,

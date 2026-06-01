@@ -59,6 +59,16 @@ function eventDisplayImageUrl(array $event): string
     return trim((string) (branding()['header_image_url'] ?? ''));
 }
 
+function eventPosterImageUrl(array $event): string
+{
+    return trim((string) ($event['image_url'] ?? ''));
+}
+
+function eventEmbedThumbnailUrl(array $event): string
+{
+    return trim((string) ($event['thumbnail_url'] ?? ''));
+}
+
 
 function appUrl(string $path = ''): string
 {

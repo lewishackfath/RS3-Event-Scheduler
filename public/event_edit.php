@@ -32,6 +32,7 @@ $formValues = [
     'discord_mention_role_id' => $event['discord_mention_role_id'] ?? '',
     'event_location' => $event['event_location'] ?? '',
     'image_url' => $event['image_url'],
+    'thumbnail_url' => $event['thumbnail_url'] ?? '',
     'event_description' => $event['event_description'],
     'create_voice_chat_for_event' => (int) ($event['create_voice_chat_for_event'] ?? 0),
     'is_active' => (int) $event['is_active'],

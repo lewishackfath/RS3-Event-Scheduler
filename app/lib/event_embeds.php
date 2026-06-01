@@ -54,7 +54,8 @@ function buildEventEmbed(array $event): array
     $timestamp = discordUnixTimestamp($event['event_start_utc']);
     $utc = new DateTimeImmutable($event['event_start_utc'], new DateTimeZone('UTC'));
     $local = utcToClanLocal((string) $event['event_start_utc']);
-    $thumbUrl = eventDisplayImageUrl($event);
+    $thumbUrl = eventEmbedThumbnailUrl($event);
+    $posterUrl = eventPosterImageUrl($event);
     $preferredRolesText = formatPreferredRolesForDisplay((array) ($event['preferred_roles'] ?? []), ' | ');
 
     $host = trim((string) ($event['host_name'] ?? '')) !== ''
@@ -122,6 +123,10 @@ function buildEventEmbed(array $event): array
         $embed['thumbnail'] = ['url' => $thumbUrl];
     }
 
+    if ($posterUrl !== '') {
+        $embed['image'] = ['url' => $posterUrl];
+    }
+
     if (($brand['logo_url'] ?? '') !== '') {
         $embed['author'] = [
             'name' => currentClanName(),
@@ -138,7 +143,8 @@ function buildEndedEventEmbed(array $event): array
 {
     $brand = branding();
     $local = utcToClanLocal((string) $event['event_start_utc']);
-    $thumbUrl = eventDisplayImageUrl($event);
+    $thumbUrl = eventEmbedThumbnailUrl($event);
+    $posterUrl = eventPosterImageUrl($event);
 
     $eventName = trim((string) ($event['event_name'] ?? 'Event'));
     if ($eventName === '') {
@@ -156,6 +162,10 @@ function buildEndedEventEmbed(array $event): array
 
     if ($thumbUrl !== '') {
         $embed['thumbnail'] = ['url' => $thumbUrl];
+    }
+
+    if ($posterUrl !== '') {
+        $embed['image'] = ['url' => $posterUrl];
     }
 
     if (($brand['logo_url'] ?? '') !== '') {
