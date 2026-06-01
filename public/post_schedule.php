@@ -117,7 +117,10 @@ renderHeader('Discord Publishing');
 
     <div class="card">
         <h3 class="mt-0">Weekly Summary Preview</h3>
-        <?php $summaryEmbed = buildWeeklySummaryEmbed($events, $weekRange['week_start_local']); ?>
+        <?php
+        $summaryEmbed = buildWeeklySummaryEmbed($events, $weekRange['week_start_local']);
+        $posterEmbeds = buildWeeklyPosterGalleryEmbeds($events, $weekRange['week_start_local'], 9);
+        ?>
         <div><strong><?= e($summaryEmbed['title']) ?></strong></div>
         <div class="muted mt-6 mb-12"><?= e($summaryEmbed['description']) ?></div>
         <?php foreach (($summaryEmbed['fields'] ?? []) as $field): ?>
@@ -126,6 +129,28 @@ renderHeader('Discord Publishing');
                 <?= nl2br(e((string) $field['value'])) ?>
             </div>
         <?php endforeach; ?>
+
+        <?php if (!empty($posterEmbeds)): ?>
+            <hr class="mt-16 mb-16">
+            <h4 class="mt-0">Poster Gallery Embed Preview</h4>
+            <p class="muted">Discord will place these poster image embeds underneath the weekly summary embed in the same weekly post.</p>
+            <div class="discord-poster-preview-grid">
+                <?php foreach ($posterEmbeds as $posterEmbed): ?>
+                    <div class="discord-poster-preview-card">
+                        <strong><?= e((string) ($posterEmbed['title'] ?? 'Event Poster')) ?></strong>
+                        <?php if (!empty($posterEmbed['description'])): ?>
+                            <div class="muted mt-4 mb-8"><?= e((string) $posterEmbed['description']) ?></div>
+                        <?php endif; ?>
+                        <?php if (!empty($posterEmbed['image']['url'])): ?>
+                            <img src="<?= e((string) $posterEmbed['image']['url']) ?>" alt="Poster preview" loading="lazy">
+                        <?php endif; ?>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        <?php else: ?>
+            <hr class="mt-16 mb-16">
+            <p class="muted mb-0">No poster URLs are set for this week, so no Discord poster gallery embed will be added.</p>
+        <?php endif; ?>
     </div>
 </div>
 <style>
@@ -135,6 +160,23 @@ renderHeader('Discord Publishing');
 }
 .date-picker::-webkit-calendar-picker-indicator {
     cursor: pointer;
+}
+.discord-poster-preview-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+}
+.discord-poster-preview-card {
+    border: 1px solid rgba(255, 255, 255, .12);
+    border-radius: 12px;
+    padding: 10px;
+    background: rgba(0, 0, 0, .16);
+}
+.discord-poster-preview-card img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 10px;
 }
 </style>
 <?php renderFooter(); ?>
