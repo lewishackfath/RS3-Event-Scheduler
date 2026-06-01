@@ -59,6 +59,105 @@ function discordApiRequest(string $method, string $endpoint, array $payload = []
     return is_array($decoded) ? $decoded : [];
 }
 
+
+function discordApiMultipartRequest(string $method, string $endpoint, array $payload = [], array $files = [], array $query = []): array
+{
+    $token = appConfig()['discord']['bot_token'];
+    if ($token === '') {
+        throw new RuntimeException('DISCORD_BOT_TOKEN is not configured.');
+    }
+
+    $url = 'https://discord.com/api/v10' . $endpoint;
+    if ($query !== []) {
+        $url .= '?' . http_build_query($query);
+    }
+
+    $ch = curl_init($url);
+    if ($ch === false) {
+        throw new RuntimeException('Failed to initialise cURL.');
+    }
+
+    $headers = [
+        'Authorization: Bot ' . $token,
+        'User-Agent: ClanEventScheduler/1.7',
+    ];
+
+    $postFields = [
+        'payload_json' => json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+    ];
+
+    foreach (array_values($files) as $index => $file) {
+        $path = (string) ($file['path'] ?? '');
+        if ($path === '' || !is_file($path)) {
+            continue;
+        }
+
+        $filename = trim((string) ($file['filename'] ?? 'poster-' . ($index + 1) . '.jpg'));
+        if ($filename === '') {
+            $filename = 'poster-' . ($index + 1) . '.jpg';
+        }
+
+        $mime = trim((string) ($file['content_type'] ?? 'application/octet-stream'));
+        if ($mime === '') {
+            $mime = 'application/octet-stream';
+        }
+
+        $postFields['files[' . $index . ']'] = new CURLFile($path, $mime, $filename);
+    }
+
+    $options = [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_CUSTOMREQUEST => strtoupper($method),
+        CURLOPT_HTTPHEADER => $headers,
+        CURLOPT_TIMEOUT => 120,
+        CURLOPT_POSTFIELDS => $postFields,
+    ];
+
+    curl_setopt_array($ch, $options);
+
+    $response = curl_exec($ch);
+    $statusCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $error = curl_error($ch);
+    curl_close($ch);
+
+    if ($response === false) {
+        throw new RuntimeException('Discord API request failed: ' . $error);
+    }
+
+    $decoded = json_decode($response, true);
+    if ($statusCode < 200 || $statusCode >= 300) {
+        $message = is_array($decoded) ? json_encode($decoded, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : $response;
+        throw new RuntimeException('Discord API error (' . $statusCode . '): ' . $message);
+    }
+
+    return is_array($decoded) ? $decoded : [];
+}
+
+function buildDiscordAttachmentPayload(array $files): array
+{
+    $attachments = [];
+    foreach (array_values($files) as $index => $file) {
+        $filename = trim((string) ($file['filename'] ?? 'poster-' . ($index + 1) . '.jpg'));
+        if ($filename === '') {
+            $filename = 'poster-' . ($index + 1) . '.jpg';
+        }
+
+        $attachment = [
+            'id' => $index,
+            'filename' => $filename,
+        ];
+
+        $description = trim((string) ($file['description'] ?? ''));
+        if ($description !== '') {
+            $attachment['description'] = mb_substr($description, 0, 1024);
+        }
+
+        $attachments[] = $attachment;
+    }
+
+    return $attachments;
+}
+
 function buildAllowedMentionsPayload(array $roleIds = []): array
 {
     $roleIds = array_values(array_unique(array_filter(array_map(static function ($roleId): string {
@@ -82,6 +181,21 @@ function postDiscordMessage(string $channelId, string $content, array $embeds = 
     ]);
 }
 
+function postDiscordMessageWithFiles(string $channelId, string $content, array $embeds = [], array $files = [], array $allowedRoleIds = []): array
+{
+    $payload = [
+        'content' => $content,
+        'embeds' => $embeds,
+        'allowed_mentions' => buildAllowedMentionsPayload($allowedRoleIds),
+    ];
+
+    if ($files !== []) {
+        $payload['attachments'] = buildDiscordAttachmentPayload($files);
+    }
+
+    return discordApiMultipartRequest('POST', '/channels/' . rawurlencode($channelId) . '/messages', $payload, $files);
+}
+
 function editDiscordMessage(string $channelId, string $messageId, string $content, array $embeds = [], array $allowedRoleIds = []): array
 {
     return discordApiRequest('PATCH', '/channels/' . $channelId . '/messages/' . $messageId, [
@@ -89,6 +203,19 @@ function editDiscordMessage(string $channelId, string $messageId, string $conten
         'embeds' => $embeds,
         'allowed_mentions' => buildAllowedMentionsPayload($allowedRoleIds),
     ]);
+}
+
+function editDiscordMessageWithFiles(string $channelId, string $messageId, string $content, array $embeds = [], array $files = [], array $allowedRoleIds = []): array
+{
+    $payload = [
+        'content' => $content,
+        'embeds' => $embeds,
+        'allowed_mentions' => buildAllowedMentionsPayload($allowedRoleIds),
+        // Supplying only the new attachment list replaces any stale files on the message.
+        'attachments' => buildDiscordAttachmentPayload($files),
+    ];
+
+    return discordApiMultipartRequest('PATCH', '/channels/' . rawurlencode($channelId) . '/messages/' . rawurlencode($messageId), $payload, $files);
 }
 
 function encodeDiscordEmojiForUrl(string $emoji): string

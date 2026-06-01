@@ -204,6 +204,33 @@ function formatWeeklySummaryEventTime(DateTimeImmutable $local): string
     return $local->format('D j M') . ' • ' . $local->format('g:i A');
 }
 
+
+function buildWeeklyPosterGalleryEmbed(DateTimeImmutable $weekStartLocal, int $posterCount): array
+{
+    $brand = branding();
+    $posterLabel = $posterCount === 1 ? 'poster' : 'posters';
+
+    $embed = [
+        'title' => currentClanName() . ' Poster Gallery',
+        'description' => 'Artwork for the week commencing ' . $weekStartLocal->format('j F Y') . '. ' . $posterCount . ' ' . $posterLabel . ' attached below.',
+        'color' => hexColourToInt((string) ($brand['embed_colour'] ?? '#5865F2')),
+        'footer' => [
+            'text' => (string) ($brand['footer_text'] ?: currentClanName() . ' Events'),
+        ],
+        'timestamp' => (new DateTimeImmutable('now', utcTimezone()))->format(DateTimeInterface::ATOM),
+    ];
+
+    if (($brand['logo_url'] ?? '') !== '') {
+        $embed['author'] = [
+            'name' => currentClanName(),
+            'icon_url' => (string) $brand['logo_url'],
+        ];
+        $embed['footer']['icon_url'] = (string) $brand['logo_url'];
+    }
+
+    return $embed;
+}
+
 function buildWeeklySummaryEmbed(array $events, DateTimeImmutable $weekStartLocal): array
 {
     $brand = branding();
@@ -285,98 +312,4 @@ function buildWeeklySummaryEmbed(array $events, DateTimeImmutable $weekStartLoca
     }
 
     return $embed;
-}
-
-function buildWeeklyPosterGalleryEmbeds(array $events, DateTimeImmutable $weekStartLocal, int $limit = 9): array
-{
-    $brand = branding();
-    $limit = max(0, min(9, $limit));
-    if ($limit === 0) {
-        return [];
-    }
-
-    $posterItems = [];
-    $seenPosterUrls = [];
-
-    foreach ($events as $event) {
-        $posterUrl = eventPosterImageUrl((array) $event);
-        if ($posterUrl === '') {
-            continue;
-        }
-
-        $dedupeKey = strtolower($posterUrl);
-        if (isset($seenPosterUrls[$dedupeKey])) {
-            continue;
-        }
-        $seenPosterUrls[$dedupeKey] = true;
-
-        $posterItems[] = [
-            'event' => $event,
-            'poster_url' => $posterUrl,
-            'local' => utcToClanLocal((string) $event['event_start_utc']),
-        ];
-    }
-
-    usort($posterItems, static function (array $a, array $b): int {
-        return ((string) $a['event']['event_start_utc']) <=> ((string) $b['event']['event_start_utc']);
-    });
-
-    $totalPosters = count($posterItems);
-    if ($totalPosters === 0) {
-        return [];
-    }
-
-    $posterItems = array_slice($posterItems, 0, $limit);
-    $embeds = [];
-
-    foreach ($posterItems as $index => $item) {
-        $event = (array) $item['event'];
-        $local = $item['local'];
-        $eventName = trim((string) ($event['event_name'] ?? 'Event'));
-        if ($eventName === '') {
-            $eventName = 'Event';
-        }
-
-        $embed = [
-            'title' => $index === 0 ? "This Week's Event Posters" : $eventName,
-            'description' => ($index === 0 ? '**' . $eventName . '** - ' : '') . $local->format('D j M • g:i A'),
-            'url' => (string) $item['poster_url'],
-            'color' => hexColourToInt((string) ($brand['embed_colour'] ?? '#5865F2')),
-            'image' => [
-                'url' => (string) $item['poster_url'],
-            ],
-            'footer' => [
-                'text' => (string) ($brand['footer_text'] ?: currentClanName() . ' Events'),
-            ],
-            'timestamp' => (new DateTimeImmutable('now', utcTimezone()))->format(DateTimeInterface::ATOM),
-        ];
-
-        if ($index > 0) {
-            $embed['description'] = '**' . $eventName . '** - ' . $local->format('D j M • g:i A');
-        }
-
-        if ($index === count($posterItems) - 1 && $totalPosters > count($posterItems)) {
-            $embed['footer']['text'] .= ' • Showing ' . count($posterItems) . ' of ' . $totalPosters . ' posters';
-        }
-
-        if (($brand['logo_url'] ?? '') !== '') {
-            $embed['author'] = [
-                'name' => currentClanName(),
-                'icon_url' => (string) $brand['logo_url'],
-            ];
-            $embed['footer']['icon_url'] = (string) $brand['logo_url'];
-        }
-
-        $embeds[] = $embed;
-    }
-
-    return $embeds;
-}
-
-function buildWeeklySummaryEmbeds(array $events, DateTimeImmutable $weekStartLocal): array
-{
-    return array_merge(
-        [buildWeeklySummaryEmbed($events, $weekStartLocal)],
-        buildWeeklyPosterGalleryEmbeds($events, $weekStartLocal, 9)
-    );
 }

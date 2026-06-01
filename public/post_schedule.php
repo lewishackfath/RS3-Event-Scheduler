@@ -117,10 +117,7 @@ renderHeader('Discord Publishing');
 
     <div class="card">
         <h3 class="mt-0">Weekly Summary Preview</h3>
-        <?php
-        $summaryEmbed = buildWeeklySummaryEmbed($events, $weekRange['week_start_local']);
-        $posterEmbeds = buildWeeklyPosterGalleryEmbeds($events, $weekRange['week_start_local'], 9);
-        ?>
+        <?php $summaryEmbed = buildWeeklySummaryEmbed($events, $weekRange['week_start_local']); ?>
         <div><strong><?= e($summaryEmbed['title']) ?></strong></div>
         <div class="muted mt-6 mb-12"><?= e($summaryEmbed['description']) ?></div>
         <?php foreach (($summaryEmbed['fields'] ?? []) as $field): ?>
@@ -130,26 +127,43 @@ renderHeader('Discord Publishing');
             </div>
         <?php endforeach; ?>
 
-        <?php if (!empty($posterEmbeds)): ?>
-            <hr class="mt-16 mb-16">
-            <h4 class="mt-0">Poster Gallery Embed Preview</h4>
-            <p class="muted">Discord will place these poster image embeds underneath the weekly summary embed in the same weekly post.</p>
+        <?php
+        $posterPreviewItems = [];
+        $seenPosterUrls = [];
+        foreach ($events as $event) {
+            $posterUrl = eventPosterImageUrl((array) $event);
+            if ($posterUrl === '') {
+                continue;
+            }
+            $key = strtolower($posterUrl);
+            if (isset($seenPosterUrls[$key])) {
+                continue;
+            }
+            $seenPosterUrls[$key] = true;
+            $posterPreviewItems[] = [
+                'event' => $event,
+                'poster_url' => $posterUrl,
+            ];
+            if (count($posterPreviewItems) >= 10) {
+                break;
+            }
+        }
+        ?>
+        <hr style="border:0;border-top:1px dashed rgba(255,255,255,.12);margin:16px 0;">
+        <div class="mb-8"><strong>Poster Gallery Message Preview</strong></div>
+        <p class="muted mt-0">Discord will send these as grouped image attachments underneath the weekly summary, instead of one long stack of image embeds.</p>
+        <?php if (empty($posterPreviewItems)): ?>
+            <p>No poster images configured for this week.</p>
+        <?php else: ?>
             <div class="discord-poster-preview-grid">
-                <?php foreach ($posterEmbeds as $posterEmbed): ?>
-                    <div class="discord-poster-preview-card">
-                        <strong><?= e((string) ($posterEmbed['title'] ?? 'Event Poster')) ?></strong>
-                        <?php if (!empty($posterEmbed['description'])): ?>
-                            <div class="muted mt-4 mb-8"><?= e((string) $posterEmbed['description']) ?></div>
-                        <?php endif; ?>
-                        <?php if (!empty($posterEmbed['image']['url'])): ?>
-                            <img src="<?= e((string) $posterEmbed['image']['url']) ?>" alt="Poster preview" loading="lazy">
-                        <?php endif; ?>
-                    </div>
+                <?php foreach ($posterPreviewItems as $posterItem): ?>
+                    <?php $posterEvent = (array) $posterItem['event']; ?>
+                    <figure class="discord-poster-preview-card">
+                        <img src="<?= e((string) $posterItem['poster_url']) ?>" alt="<?= e((string) ($posterEvent['event_name'] ?? 'Event')) ?> poster" loading="lazy">
+                        <figcaption><?= e((string) ($posterEvent['event_name'] ?? 'Event')) ?></figcaption>
+                    </figure>
                 <?php endforeach; ?>
             </div>
-        <?php else: ?>
-            <hr class="mt-16 mb-16">
-            <p class="muted mb-0">No poster URLs are set for this week, so no Discord poster gallery embed will be added.</p>
         <?php endif; ?>
     </div>
 </div>
@@ -163,20 +177,25 @@ renderHeader('Discord Publishing');
 }
 .discord-poster-preview-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 12px;
+    gap: 10px;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
 }
 .discord-poster-preview-card {
-    border: 1px solid rgba(255, 255, 255, .12);
+    margin: 0;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,.12);
     border-radius: 12px;
-    padding: 10px;
-    background: rgba(0, 0, 0, .16);
+    background: rgba(0,0,0,.18);
 }
 .discord-poster-preview-card img {
     display: block;
     width: 100%;
-    height: auto;
-    border-radius: 10px;
+    aspect-ratio: 4 / 5;
+    object-fit: cover;
+}
+.discord-poster-preview-card figcaption {
+    padding: 8px;
+    font-size: .85rem;
 }
 </style>
 <?php renderFooter(); ?>

@@ -388,18 +388,31 @@ final class DiscordPostingService
         $range = weekRangeFromDate($date);
         $events = $this->events->getForWeek($range['week_start_utc'], $range['week_end_utc']);
         $existing = $this->events->getWeeklyPost($range['week_start_utc']);
-        $embeds = buildWeeklySummaryEmbeds($events, $range['week_start_local']);
+        $embed = buildWeeklySummaryEmbed($events, $range['week_start_local']);
+        $results = [];
 
         if ($existing && !empty($existing['discord_message_id'])) {
             try {
-                editDiscordMessage((string) $existing['discord_channel_id'], (string) $existing['discord_message_id'], '', $embeds);
-                $this->events->recordWeeklyPost($range['week_start_utc'], (string) $existing['discord_channel_id'], (string) $existing['discord_message_id']);
+                $summaryChannelId = (string) $existing['discord_channel_id'];
+                editDiscordMessage($summaryChannelId, (string) $existing['discord_message_id'], '', [$embed]);
+                $this->events->recordWeeklyPost($range['week_start_utc'], $summaryChannelId, (string) $existing['discord_message_id']);
+                $existing = $this->events->getWeeklyPost($range['week_start_utc']) ?? $existing;
 
-                return [[
+                $results[] = [
                     'scope' => 'weekly_summary',
                     'status' => 'updated',
                     'message' => 'Updated existing weekly summary message.',
-                ]];
+                ];
+
+                $results[] = $this->syncWeeklyPosterGalleryMessage(
+                    $range['week_start_utc'],
+                    $summaryChannelId,
+                    $events,
+                    $range['week_start_local'],
+                    $existing
+                );
+
+                return $results;
             } catch (Throwable $e) {
                 if ($this->isDiscordOldMessageEditLimitError($e)) {
                     return [[
@@ -413,6 +426,7 @@ final class DiscordPostingService
                     throw $e;
                 }
 
+                $this->deleteWeeklyGalleryIfTracked($existing);
                 $this->events->deleteWeeklyPost($range['week_start_utc']);
                 $existing = null;
             }
@@ -426,17 +440,308 @@ final class DiscordPostingService
             ]];
         }
 
-        $response = postDiscordMessage($channelId, '', $embeds);
+        $response = postDiscordMessage($channelId, '', [$embed]);
         $messageId = (string) ($response['id'] ?? '');
-        if ($messageId !== '') {
-            $this->events->recordWeeklyPost($range['week_start_utc'], $channelId, $messageId);
+        if ($messageId === '') {
+            return [[
+                'scope' => 'weekly_summary',
+                'status' => 'failed',
+                'message' => 'Weekly summary message was not posted.',
+            ]];
         }
 
-        return [[
+        $this->events->recordWeeklyPost($range['week_start_utc'], $channelId, $messageId);
+        $existing = $this->events->getWeeklyPost($range['week_start_utc']);
+
+        $results[] = [
             'scope' => 'weekly_summary',
             'status' => 'posted',
             'message' => 'Posted weekly summary for week of ' . $range['week_start_local']->format('j M Y') . '.',
-        ]];
+        ];
+
+        $results[] = $this->syncWeeklyPosterGalleryMessage(
+            $range['week_start_utc'],
+            $channelId,
+            $events,
+            $range['week_start_local'],
+            $existing
+        );
+
+        return $results;
+    }
+
+    private function syncWeeklyPosterGalleryMessage(string $weekStartUtc, string $channelId, array $events, DateTimeImmutable $weekStartLocal, ?array $weeklyPost): array
+    {
+        $files = $this->buildWeeklyPosterGalleryFiles($events);
+        $existingGalleryMessageId = trim((string) ($weeklyPost['discord_gallery_message_id'] ?? ''));
+
+        try {
+            if ($files === []) {
+                if ($existingGalleryMessageId !== '') {
+                    try {
+                        deleteDiscordMessage($channelId, $existingGalleryMessageId);
+                    } catch (Throwable $e) {
+                        if (!$this->isUnknownDiscordResourceError($e)) {
+                            throw $e;
+                        }
+                    }
+                    $this->events->clearWeeklyGalleryPost($weekStartUtc);
+
+                    return [
+                        'scope' => 'weekly_poster_gallery',
+                        'status' => 'removed',
+                        'message' => 'Removed weekly poster gallery because no poster images are configured.',
+                    ];
+                }
+
+                return [
+                    'scope' => 'weekly_poster_gallery',
+                    'status' => 'skipped',
+                    'message' => 'Skipped weekly poster gallery because no poster images are configured.',
+                ];
+            }
+
+            $embed = buildWeeklyPosterGalleryEmbed($weekStartLocal, count($files));
+
+            if ($existingGalleryMessageId !== '') {
+                try {
+                    editDiscordMessageWithFiles($channelId, $existingGalleryMessageId, '', [$embed], $files);
+                    $this->events->recordWeeklyGalleryPost($weekStartUtc, $existingGalleryMessageId);
+
+                    return [
+                        'scope' => 'weekly_poster_gallery',
+                        'status' => 'updated',
+                        'message' => 'Updated weekly poster gallery with ' . count($files) . ' poster' . (count($files) === 1 ? '' : 's') . '.',
+                    ];
+                } catch (Throwable $e) {
+                    if (!$this->isDiscordOldMessageEditLimitError($e) && !$this->isUnknownDiscordResourceError($e)) {
+                        throw $e;
+                    }
+
+                    if (!$this->isUnknownDiscordResourceError($e)) {
+                        try {
+                            deleteDiscordMessage($channelId, $existingGalleryMessageId);
+                        } catch (Throwable $deleteError) {
+                            if (!$this->isUnknownDiscordResourceError($deleteError)) {
+                                throw $deleteError;
+                            }
+                        }
+                    }
+                    $this->events->clearWeeklyGalleryPost($weekStartUtc);
+                    $existingGalleryMessageId = '';
+                }
+            }
+
+            $response = postDiscordMessageWithFiles($channelId, '', [$embed], $files);
+            $messageId = (string) ($response['id'] ?? '');
+            if ($messageId === '') {
+                return [
+                    'scope' => 'weekly_poster_gallery',
+                    'status' => 'failed',
+                    'message' => 'Weekly poster gallery was not posted.',
+                ];
+            }
+
+            $this->events->recordWeeklyGalleryPost($weekStartUtc, $messageId);
+
+            return [
+                'scope' => 'weekly_poster_gallery',
+                'status' => 'posted',
+                'message' => 'Posted weekly poster gallery with ' . count($files) . ' poster' . (count($files) === 1 ? '' : 's') . '.',
+            ];
+        } catch (Throwable $e) {
+            return [
+                'scope' => 'weekly_poster_gallery',
+                'status' => 'failed',
+                'message' => 'Failed to update weekly poster gallery: ' . $e->getMessage(),
+            ];
+        } finally {
+            $this->cleanupDiscordUploadFiles($files);
+        }
+    }
+
+    private function deleteWeeklyGalleryIfTracked(?array $weeklyPost): void
+    {
+        if (!$weeklyPost) {
+            return;
+        }
+
+        $channelId = trim((string) ($weeklyPost['discord_channel_id'] ?? ''));
+        $messageId = trim((string) ($weeklyPost['discord_gallery_message_id'] ?? ''));
+        if ($channelId === '' || $messageId === '') {
+            return;
+        }
+
+        try {
+            deleteDiscordMessage($channelId, $messageId);
+        } catch (Throwable $e) {
+            if (!$this->isUnknownDiscordResourceError($e)) {
+                throw $e;
+            }
+        }
+    }
+
+    private function buildWeeklyPosterGalleryFiles(array $events): array
+    {
+        $files = [];
+        $seenUrls = [];
+
+        foreach ($events as $event) {
+            if (count($files) >= 10) {
+                break;
+            }
+
+            $url = trim((string) eventPosterImageUrl((array) $event));
+            if ($url === '') {
+                continue;
+            }
+
+            $normalisedUrl = strtolower($url);
+            if (isset($seenUrls[$normalisedUrl])) {
+                continue;
+            }
+            $seenUrls[$normalisedUrl] = true;
+
+            $file = $this->downloadPosterForDiscordGallery($url, (array) $event, count($files) + 1);
+            if ($file !== null) {
+                $files[] = $file;
+            }
+        }
+
+        return $files;
+    }
+
+    private function downloadPosterForDiscordGallery(string $url, array $event, int $position): ?array
+    {
+        $parts = parse_url($url);
+        $scheme = strtolower((string) ($parts['scheme'] ?? ''));
+        if (!in_array($scheme, ['http', 'https'], true)) {
+            return null;
+        }
+
+        $tmp = tempnam(sys_get_temp_dir(), 'rs3_discord_poster_');
+        if ($tmp === false) {
+            return null;
+        }
+
+        $handle = fopen($tmp, 'wb');
+        if ($handle === false) {
+            @unlink($tmp);
+            return null;
+        }
+
+        $ch = curl_init($url);
+        if ($ch === false) {
+            fclose($handle);
+            @unlink($tmp);
+            return null;
+        }
+
+        $maxBytes = 24 * 1024 * 1024;
+        $options = [
+            CURLOPT_FILE => $handle,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS => 5,
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_TIMEOUT => 90,
+            CURLOPT_USERAGENT => 'ClanEventScheduler/1.7',
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
+        ];
+        if (defined('CURLOPT_PROTOCOLS')) {
+            $options[CURLOPT_PROTOCOLS] = CURLPROTO_HTTP | CURLPROTO_HTTPS;
+        }
+        if (defined('CURLOPT_REDIR_PROTOCOLS')) {
+            $options[CURLOPT_REDIR_PROTOCOLS] = CURLPROTO_HTTP | CURLPROTO_HTTPS;
+        }
+        if (defined('CURLOPT_MAXFILESIZE_LARGE')) {
+            $options[CURLOPT_MAXFILESIZE_LARGE] = $maxBytes;
+        }
+
+        curl_setopt_array($ch, $options);
+        $ok = curl_exec($ch);
+        $statusCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $contentType = strtolower(trim((string) curl_getinfo($ch, CURLINFO_CONTENT_TYPE)));
+        curl_close($ch);
+        fclose($handle);
+
+        $size = is_file($tmp) ? (int) filesize($tmp) : 0;
+        if ($ok !== true || $statusCode < 200 || $statusCode >= 300 || $size <= 0 || $size > $maxBytes) {
+            @unlink($tmp);
+            return null;
+        }
+
+        [$mime, $extension] = $this->resolveDiscordGalleryImageType($contentType, $url);
+        if ($mime === '' || $extension === '') {
+            @unlink($tmp);
+            return null;
+        }
+
+        $eventName = trim((string) ($event['event_name'] ?? 'poster'));
+        $datePart = '';
+        if (!empty($event['event_start_utc'])) {
+            try {
+                $datePart = utcToClanLocal((string) $event['event_start_utc'])->format('Y-m-d');
+            } catch (Throwable $e) {
+                $datePart = '';
+            }
+        }
+
+        $base = strtolower($eventName . ($datePart !== '' ? '-' . $datePart : '') . '-' . $position);
+        $base = preg_replace('/[^a-z0-9._-]+/', '-', $base) ?: 'poster-' . $position;
+        $base = trim($base, '-_.');
+        if ($base === '') {
+            $base = 'poster-' . $position;
+        }
+
+        return [
+            'path' => $tmp,
+            'filename' => mb_substr($base, 0, 80) . '.' . $extension,
+            'content_type' => $mime,
+            'description' => mb_substr($eventName, 0, 1024),
+        ];
+    }
+
+    private function resolveDiscordGalleryImageType(string $contentType, string $url): array
+    {
+        $mime = strtolower(trim(explode(';', $contentType)[0] ?? ''));
+        $mimeToExtension = [
+            'image/jpeg' => 'jpg',
+            'image/jpg' => 'jpg',
+            'image/png' => 'png',
+            'image/gif' => 'gif',
+            'image/webp' => 'webp',
+        ];
+
+        if (isset($mimeToExtension[$mime])) {
+            return [$mime === 'image/jpg' ? 'image/jpeg' : $mime, $mimeToExtension[$mime]];
+        }
+
+        $path = parse_url($url, PHP_URL_PATH);
+        $extension = strtolower(pathinfo((string) $path, PATHINFO_EXTENSION));
+        $extensionToMime = [
+            'jpg' => 'image/jpeg',
+            'jpeg' => 'image/jpeg',
+            'png' => 'image/png',
+            'gif' => 'image/gif',
+            'webp' => 'image/webp',
+        ];
+
+        if (isset($extensionToMime[$extension])) {
+            return [$extensionToMime[$extension], $extension === 'jpeg' ? 'jpg' : $extension];
+        }
+
+        return ['', ''];
+    }
+
+    private function cleanupDiscordUploadFiles(array $files): void
+    {
+        foreach ($files as $file) {
+            $path = (string) ($file['path'] ?? '');
+            if ($path !== '' && is_file($path)) {
+                @unlink($path);
+            }
+        }
     }
 
     private function syncScheduledEvent(array $event): array

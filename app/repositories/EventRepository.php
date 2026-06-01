@@ -649,6 +649,37 @@ public function enqueueBotCommand(
         ]);
     }
 
+    public function recordWeeklyGalleryPost(string $weekStartUtc, string $messageId): void
+    {
+        $stmt = db()->prepare(
+            'UPDATE discord_weekly_posts
+             SET discord_gallery_message_id = :message_id,
+                 discord_gallery_updated_at_utc = UTC_TIMESTAMP(),
+                 updated_at_utc = UTC_TIMESTAMP()
+             WHERE clan_id = :clan_id AND week_start_utc = :week_start_utc'
+        );
+        $stmt->execute([
+            'clan_id' => currentClanId(),
+            'week_start_utc' => $weekStartUtc,
+            'message_id' => $messageId !== '' ? $messageId : null,
+        ]);
+    }
+
+    public function clearWeeklyGalleryPost(string $weekStartUtc): void
+    {
+        $stmt = db()->prepare(
+            'UPDATE discord_weekly_posts
+             SET discord_gallery_message_id = NULL,
+                 discord_gallery_updated_at_utc = UTC_TIMESTAMP(),
+                 updated_at_utc = UTC_TIMESTAMP()
+             WHERE clan_id = :clan_id AND week_start_utc = :week_start_utc'
+        );
+        $stmt->execute([
+            'clan_id' => currentClanId(),
+            'week_start_utc' => $weekStartUtc,
+        ]);
+    }
+
     public function deleteWeeklyPost(string $weekStartUtc): void
     {
         $stmt = db()->prepare(

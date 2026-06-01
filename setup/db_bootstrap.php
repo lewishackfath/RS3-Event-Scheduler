@@ -239,6 +239,8 @@ function runDatabaseBootstrap(bool $verbose = false): void
                 week_start_utc DATETIME NOT NULL,
                 discord_channel_id VARCHAR(32) NOT NULL,
                 discord_message_id VARCHAR(32) NOT NULL,
+                discord_gallery_message_id VARCHAR(32) NULL,
+                discord_gallery_updated_at_utc DATETIME NULL,
                 posted_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at_utc DATETIME NULL,
                 CONSTRAINT fk_discord_weekly_posts_clan FOREIGN KEY (clan_id) REFERENCES clans(id) ON DELETE CASCADE
@@ -251,7 +253,9 @@ function runDatabaseBootstrap(bool $verbose = false): void
             'week_start_utc' => 'ALTER TABLE discord_weekly_posts ADD COLUMN week_start_utc DATETIME NOT NULL AFTER clan_id',
             'discord_channel_id' => 'ALTER TABLE discord_weekly_posts ADD COLUMN discord_channel_id VARCHAR(32) NOT NULL AFTER week_start_utc',
             'discord_message_id' => 'ALTER TABLE discord_weekly_posts ADD COLUMN discord_message_id VARCHAR(32) NOT NULL AFTER discord_channel_id',
-            'posted_at_utc' => 'ALTER TABLE discord_weekly_posts ADD COLUMN posted_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER discord_message_id',
+            'discord_gallery_message_id' => 'ALTER TABLE discord_weekly_posts ADD COLUMN discord_gallery_message_id VARCHAR(32) NULL AFTER discord_message_id',
+            'discord_gallery_updated_at_utc' => 'ALTER TABLE discord_weekly_posts ADD COLUMN discord_gallery_updated_at_utc DATETIME NULL AFTER discord_gallery_message_id',
+            'posted_at_utc' => 'ALTER TABLE discord_weekly_posts ADD COLUMN posted_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER discord_gallery_updated_at_utc',
             'updated_at_utc' => 'ALTER TABLE discord_weekly_posts ADD COLUMN updated_at_utc DATETIME NULL AFTER posted_at_utc',
         ];
 
