@@ -24,11 +24,19 @@ try {
     }
 
     $discordUser = fetchDiscordUser($accessToken);
-    $member = fetchDiscordCurrentUserGuildMember($accessToken, authGuildId());
+    $isDirectAdminUser = userIsDirectlyAuthorised($discordUser);
+    $member = [];
 
-    if (!userCanAccessApp($discordUser, $member)) {
-        logoutUser();
-        throw new RuntimeException('Your Discord account does not have one of the required admin roles or user overrides for this app.');
+    // Users explicitly listed in ADMIN_USER_IDS are allowed to manage the app
+    // even when they are not present in the configured Discord server.
+    // Only fetch the guild member record when we still need to validate role-based access.
+    if (!$isDirectAdminUser) {
+        $member = fetchDiscordCurrentUserGuildMember($accessToken, authGuildId());
+
+        if (!userCanAccessApp($discordUser, $member)) {
+            logoutUser();
+            throw new RuntimeException('Your Discord account does not have one of the required admin roles or user overrides for this app.');
+        }
     }
 
     setAuthenticatedUser($discordUser, $member);

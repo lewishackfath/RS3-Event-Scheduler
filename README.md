@@ -43,7 +43,7 @@ A lightweight PHP web app for managing a weekly clan event schedule and posting 
 ## Notes
 
 - The public schedule page stays visible without login.
-- A user is allowed in if their logged-in Discord account holds one of the configured roles in `DISCORD_GUILD_ID`, or their user ID is listed in `ADMIN_USER_IDS`.
+- A user is allowed in if their logged-in Discord account holds one of the configured roles in `DISCORD_GUILD_ID`, or their user ID is listed in `ADMIN_USER_IDS`. Users listed in `ADMIN_USER_IDS` are treated as direct admin overrides and do not need to be present in the Discord server for the OAuth login check.
 - Recommended OAuth scopes: `identify guilds.members.read`
 - All event times are entered in the clan timezone and stored in UTC.
 - Discord local time rendering is handled through Discord timestamps.
