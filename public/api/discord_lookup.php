@@ -92,10 +92,31 @@ function discordLookupDiagnosticStep(string $name, callable $callback): array
     }
 }
 
+function discordLookupSessionDiagnostics(): array
+{
+    $cookieName = session_name();
+    $cookieNames = array_keys($_COOKIE);
+
+    return [
+        'session_name' => $cookieName,
+        'session_id_present' => session_id() !== '',
+        'session_cookie_received' => isset($_COOKIE[$cookieName]),
+        'received_cookie_names' => $cookieNames,
+        'request' => [
+            'host' => (string) ($_SERVER['HTTP_HOST'] ?? ''),
+            'uri' => (string) ($_SERVER['REQUEST_URI'] ?? ''),
+            'referer' => (string) ($_SERVER['HTTP_REFERER'] ?? ''),
+            'origin' => (string) ($_SERVER['HTTP_ORIGIN'] ?? ''),
+            'is_ajax' => strtolower((string) ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '')) === 'xmlhttprequest',
+        ],
+    ];
+}
+
 try {
     if (!isAuthenticated()) {
         discordLookupJsonResponse([
             'error' => 'You are not logged in, or your session has expired. Refresh the page and log in again, then retry the Discord lookup.',
+            'session' => discordLookupSessionDiagnostics(),
         ], 401);
     }
 

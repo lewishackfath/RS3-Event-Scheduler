@@ -383,8 +383,11 @@ if (!in_array($recurrenceUnit, ['days', 'weeks'], true)) {
 
     function fetchJsonWithStatus(url) {
         return fetch(url, {
+            credentials: 'same-origin',
+            cache: 'no-store',
             headers: {
-                'Accept': 'application/json'
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
             }
         }).then(function (response) {
             return response.text().then(function (text) {
@@ -464,7 +467,15 @@ if (!in_array($recurrenceUnit, ['days', 'weeks'], true)) {
         }
         if (controller) controller.abort();
         controller = new AbortController();
-        fetch('api/discord_lookup.php?type=members&q=' + encodeURIComponent(q), {signal: controller.signal})
+        fetch('api/discord_lookup.php?type=members&q=' + encodeURIComponent(q), {
+            signal: controller.signal,
+            credentials: 'same-origin',
+            cache: 'no-store',
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
             .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
             .then(function (payload) {
                 if (!payload.ok) {
