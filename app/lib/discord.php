@@ -5,9 +5,23 @@ require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/time.php';
 require_once __DIR__ . '/helpers.php';
 
+function discordBotToken(): string
+{
+    $token = trim((string) appConfig()['discord']['bot_token']);
+
+    // The Discord API expects the raw bot token after the "Bot " prefix.
+    // This allows either raw tokens or accidentally pasted "Bot xxxxx" values
+    // in .env without turning the header into "Bot Bot xxxxx".
+    if (stripos($token, 'Bot ') === 0) {
+        $token = trim(substr($token, 4));
+    }
+
+    return $token;
+}
+
 function discordApiRequest(string $method, string $endpoint, array $payload = [], array $query = []): array
 {
-    $token = appConfig()['discord']['bot_token'];
+    $token = discordBotToken();
     if ($token === '') {
         throw new RuntimeException('DISCORD_BOT_TOKEN is not configured.');
     }
@@ -62,7 +76,7 @@ function discordApiRequest(string $method, string $endpoint, array $payload = []
 
 function discordApiMultipartRequest(string $method, string $endpoint, array $payload = [], array $files = [], array $query = []): array
 {
-    $token = appConfig()['discord']['bot_token'];
+    $token = discordBotToken();
     if ($token === '') {
         throw new RuntimeException('DISCORD_BOT_TOKEN is not configured.');
     }
@@ -271,6 +285,16 @@ function fetchDiscordChannel(string $channelId): array
 function deleteDiscordMessage(string $channelId, string $messageId): void
 {
     discordApiRequest('DELETE', '/channels/' . rawurlencode($channelId) . '/messages/' . rawurlencode($messageId));
+}
+
+function fetchDiscordCurrentBotUser(): array
+{
+    return discordApiRequest('GET', '/users/@me');
+}
+
+function fetchDiscordGuild(string $guildId): array
+{
+    return discordApiRequest('GET', '/guilds/' . rawurlencode($guildId));
 }
 
 function fetchGuildChannels(string $guildId): array

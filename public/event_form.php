@@ -381,10 +381,24 @@ if (!in_array($recurrenceUnit, ['days', 'weeks'], true)) {
         results.hidden = false;
     }
 
+    function fetchJsonWithStatus(url) {
+        return fetch(url).then(function (response) {
+            return response.json().then(function (data) {
+                return { ok: response.ok, data: data };
+            }).catch(function () {
+                return { ok: response.ok, data: {} };
+            });
+        }).then(function (payload) {
+            if (!payload.ok) {
+                throw new Error(payload.data && payload.data.error ? payload.data.error : 'Discord lookup failed.');
+            }
+            return payload.data;
+        });
+    }
+
     function loadMentionRoles() {
         const selectedRole = roleSelect ? (roleSelect.getAttribute('data-selected-role') || '') : '';
-        fetch('api/discord_lookup.php?type=roles')
-            .then(function (response) { return response.json(); })
+        fetchJsonWithStatus('api/discord_lookup.php?type=roles')
             .then(function (data) {
                 if (!roleSelect) return;
                 const roles = Array.isArray(data.items) ? data.items : [];
@@ -398,20 +412,16 @@ if (!in_array($recurrenceUnit, ['days', 'weeks'], true)) {
                 });
                 if (roleStatus) roleStatus.textContent = roles.length ? 'Loaded ' + roles.length + ' roles.' : 'No selectable roles found.';
             })
-            .catch(function () {
-                if (roleStatus) roleStatus.textContent = 'Could not load roles. You can still save the event without a role mention.';
+            .catch(function (err) {
+                if (roleStatus) roleStatus.textContent = 'Could not load roles automatically: ' + (err.message || 'Discord lookup failed.');
             });
     }
 
     function loadChannels() {
         const selected = channelSelect.getAttribute('data-selected-channel') || '';
-        fetch('api/discord_lookup.php?type=channels')
-            .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
-            .then(function (payload) {
-                if (!payload.ok) {
-                    throw new Error(payload.data && payload.data.error ? payload.data.error : 'Unable to load channels.');
-                }
-                const items = Array.isArray(payload.data.items) ? payload.data.items : [];
+        fetchJsonWithStatus('api/discord_lookup.php?type=channels')
+            .then(function (data) {
+                const items = Array.isArray(data.items) ? data.items : [];
                 items.forEach(function (item) {
                     const opt = document.createElement('option');
                     opt.value = item.id;
