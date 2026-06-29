@@ -15,6 +15,138 @@ final class DiscordPostingService
         $this->events = new EventRepository();
     }
 
+
+    /**
+     * Build stable hashes for Discord artefacts so cron can skip PATCH calls when
+     * the rendered Discord payload has not changed since the last successful sync.
+     */
+    private function syncPayloadHash(array $payload): string
+    {
+        return hash('sha256', json_encode($this->normaliseForHash($payload), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+    }
+
+    private function normaliseForHash(mixed $value): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+
+        $keys = array_keys($value);
+        $isList = $keys === range(0, count($value) - 1);
+        if ($isList) {
+            return array_map(fn (mixed $item): mixed => $this->normaliseForHash($item), $value);
+        }
+
+        ksort($value);
+        foreach ($value as $key => $item) {
+            $value[$key] = $this->normaliseForHash($item);
+        }
+
+        return $value;
+    }
+
+    private function normalisedPreferredRolesForHash(array $roles): array
+    {
+        $normalised = [];
+        foreach ($roles as $role) {
+            if (!is_array($role)) {
+                continue;
+            }
+            $roleName = trim((string) ($role['role_name'] ?? ''));
+            $emoji = trim((string) ($role['reaction_emoji'] ?? ''));
+            if ($roleName === '' || $emoji === '') {
+                continue;
+            }
+            $normalised[] = [
+                'role_name' => $roleName,
+                'reaction_emoji' => $emoji,
+            ];
+        }
+
+        return $normalised;
+    }
+
+    private function dailyEventSyncHash(array $event, string $channelId, string $content, array $embed, array $allowedMentionRoleIds): string
+    {
+        sort($allowedMentionRoleIds, SORT_STRING);
+
+        return $this->syncPayloadHash([
+            'type' => 'daily_event_message_v1',
+            'channel_id' => $channelId,
+            'content' => $content,
+            'embeds' => [$embed],
+            'allowed_mention_role_ids' => $allowedMentionRoleIds,
+            'preferred_role_reactions' => $this->normalisedPreferredRolesForHash((array) ($event['preferred_roles'] ?? [])),
+        ]);
+    }
+
+    private function endedDailyEventSyncHash(array $event): string
+    {
+        return $this->syncPayloadHash([
+            'type' => 'daily_event_ended_message_v1',
+            'embeds' => [buildEndedEventEmbed($event)],
+        ]);
+    }
+
+    private function scheduledEventSyncHash(array $event): string
+    {
+        return $this->syncPayloadHash([
+            'type' => 'native_discord_scheduled_event_v1',
+            'payload' => buildDiscordScheduledEventPayload($event),
+        ]);
+    }
+
+    private function weeklySummarySyncHash(string $channelId, array $embed): string
+    {
+        return $this->syncPayloadHash([
+            'type' => 'weekly_summary_message_v1',
+            'channel_id' => $channelId,
+            'embeds' => [$embed],
+        ]);
+    }
+
+    private function weeklyPosterGalleryItems(array $events): array
+    {
+        $items = [];
+        $seenUrls = [];
+
+        foreach ($events as $event) {
+            if (count($items) >= 10) {
+                break;
+            }
+
+            $event = (array) $event;
+            $url = trim((string) eventPosterImageUrl($event));
+            if ($url === '') {
+                continue;
+            }
+
+            $normalisedUrl = strtolower($url);
+            if (isset($seenUrls[$normalisedUrl])) {
+                continue;
+            }
+            $seenUrls[$normalisedUrl] = true;
+
+            $items[] = [
+                'url' => $url,
+                'event_name' => trim((string) ($event['event_name'] ?? '')),
+                'event_start_utc' => trim((string) ($event['event_start_utc'] ?? '')),
+            ];
+        }
+
+        return $items;
+    }
+
+    private function weeklyPosterGallerySyncHash(string $channelId, array $items, array $embed): string
+    {
+        return $this->syncPayloadHash([
+            'type' => 'weekly_poster_gallery_message_v1',
+            'channel_id' => $channelId,
+            'poster_items' => $items,
+            'embeds' => [$embed],
+        ]);
+    }
+
     public function postEvents(array $events): array
     {
         $results = [];
@@ -405,15 +537,26 @@ final class DiscordPostingService
         if ($existing && !empty($existing['discord_message_id'])) {
             try {
                 $summaryChannelId = (string) $existing['discord_channel_id'];
-                editDiscordMessage($summaryChannelId, (string) $existing['discord_message_id'], '', [$embed]);
-                $this->events->recordWeeklyPost($range['week_start_utc'], $summaryChannelId, (string) $existing['discord_message_id']);
-                $existing = $this->events->getWeeklyPost($range['week_start_utc']) ?? $existing;
+                $summaryHash = $this->weeklySummarySyncHash($summaryChannelId, $embed);
+                $existingSummaryHash = trim((string) ($existing['discord_summary_sync_hash'] ?? ''));
 
-                $results[] = [
-                    'scope' => 'weekly_summary',
-                    'status' => 'updated',
-                    'message' => 'Updated existing weekly summary message.',
-                ];
+                if ($existingSummaryHash === $summaryHash) {
+                    $results[] = [
+                        'scope' => 'weekly_summary',
+                        'status' => 'skipped',
+                        'message' => 'Skipped weekly summary edit: no changes detected.',
+                    ];
+                } else {
+                    editDiscordMessage($summaryChannelId, (string) $existing['discord_message_id'], '', [$embed]);
+                    $this->events->recordWeeklyPost($range['week_start_utc'], $summaryChannelId, (string) $existing['discord_message_id'], $summaryHash);
+                    $existing = $this->events->getWeeklyPost($range['week_start_utc']) ?? $existing;
+
+                    $results[] = [
+                        'scope' => 'weekly_summary',
+                        'status' => 'updated',
+                        'message' => 'Updated existing weekly summary message.',
+                    ];
+                }
 
                 $results[] = $this->syncWeeklyPosterGalleryMessage(
                     $range['week_start_utc'],
@@ -461,7 +604,8 @@ final class DiscordPostingService
             ]];
         }
 
-        $this->events->recordWeeklyPost($range['week_start_utc'], $channelId, $messageId);
+        $summaryHash = $this->weeklySummarySyncHash($channelId, $embed);
+        $this->events->recordWeeklyPost($range['week_start_utc'], $channelId, $messageId, $summaryHash);
         $existing = $this->events->getWeeklyPost($range['week_start_utc']);
 
         $results[] = [
@@ -483,11 +627,12 @@ final class DiscordPostingService
 
     private function syncWeeklyPosterGalleryMessage(string $weekStartUtc, string $channelId, array $events, DateTimeImmutable $weekStartLocal, ?array $weeklyPost): array
     {
-        $files = $this->buildWeeklyPosterGalleryFiles($events);
+        $files = [];
+        $galleryItems = $this->weeklyPosterGalleryItems($events);
         $existingGalleryMessageId = trim((string) ($weeklyPost['discord_gallery_message_id'] ?? ''));
 
         try {
-            if ($files === []) {
+            if ($galleryItems === []) {
                 if ($existingGalleryMessageId !== '') {
                     try {
                         deleteDiscordMessage($channelId, $existingGalleryMessageId);
@@ -512,12 +657,34 @@ final class DiscordPostingService
                 ];
             }
 
+            $embed = buildWeeklyPosterGalleryEmbed($weekStartLocal, count($galleryItems));
+            $galleryHash = $this->weeklyPosterGallerySyncHash($channelId, $galleryItems, $embed);
+            $existingGalleryHash = trim((string) ($weeklyPost['discord_gallery_sync_hash'] ?? ''));
+
+            if ($existingGalleryMessageId !== '' && $existingGalleryHash === $galleryHash) {
+                return [
+                    'scope' => 'weekly_poster_gallery',
+                    'status' => 'skipped',
+                    'message' => 'Skipped weekly poster gallery edit: no changes detected.',
+                ];
+            }
+
+            $files = $this->buildWeeklyPosterGalleryFiles($events);
+            if ($files === []) {
+                return [
+                    'scope' => 'weekly_poster_gallery',
+                    'status' => 'skipped',
+                    'message' => 'Skipped weekly poster gallery because no poster images could be downloaded.',
+                ];
+            }
+
             $embed = buildWeeklyPosterGalleryEmbed($weekStartLocal, count($files));
+            $galleryHash = $this->weeklyPosterGallerySyncHash($channelId, $galleryItems, $embed);
 
             if ($existingGalleryMessageId !== '') {
                 try {
                     editDiscordMessageWithFiles($channelId, $existingGalleryMessageId, '', [$embed], $files);
-                    $this->events->recordWeeklyGalleryPost($weekStartUtc, $existingGalleryMessageId);
+                    $this->events->recordWeeklyGalleryPost($weekStartUtc, $existingGalleryMessageId, $galleryHash);
 
                     return [
                         'scope' => 'weekly_poster_gallery',
@@ -553,7 +720,7 @@ final class DiscordPostingService
                 ];
             }
 
-            $this->events->recordWeeklyGalleryPost($weekStartUtc, $messageId);
+            $this->events->recordWeeklyGalleryPost($weekStartUtc, $messageId, $galleryHash);
 
             return [
                 'scope' => 'weekly_poster_gallery',
@@ -808,6 +975,8 @@ final class DiscordPostingService
             return ['', 'Skipped native Discord event: event has ended'];
         }
 
+        $scheduledEventHash = $this->scheduledEventSyncHash($event);
+
         if ($scheduledEventId !== '') {
             if ($hasStarted) {
                 // Once an event has started, Discord keeps it live until its scheduled end time.
@@ -816,10 +985,16 @@ final class DiscordPostingService
                 return [$scheduledEventUrl, 'Kept native Discord event until event end time'];
             }
 
+            $existingScheduledHash = trim((string) ($event['discord_scheduled_event_sync_hash'] ?? ''));
+            if ($existingScheduledHash === $scheduledEventHash) {
+                $scheduledEventUrl = buildDiscordScheduledEventUrl($scheduledEventId);
+                return [$scheduledEventUrl, 'Skipped native Discord event update: no changes detected'];
+            }
+
             try {
                 editScheduledEvent($scheduledEventId, $event);
                 $scheduledEventUrl = buildDiscordScheduledEventUrl($scheduledEventId);
-                $this->events->markScheduledEvent((int) $event['id'], $scheduledEventId);
+                $this->events->markScheduledEvent((int) $event['id'], $scheduledEventId, $scheduledEventHash);
                 return [$scheduledEventUrl, 'Updated native Discord event'];
             } catch (Throwable $e) {
                 if (!$this->isUnknownDiscordResourceError($e)) {
@@ -839,7 +1014,7 @@ final class DiscordPostingService
             return ['', 'Native Discord event was not created'];
         }
 
-        $this->events->markScheduledEvent((int) $event['id'], $newScheduledEventId);
+        $this->events->markScheduledEvent((int) $event['id'], $newScheduledEventId, $scheduledEventHash);
         $scheduledEventUrl = buildDiscordScheduledEventUrl($newScheduledEventId);
 
         return [$scheduledEventUrl, 'Created native Discord event'];
@@ -1355,12 +1530,18 @@ private function sendVoiceDeleteWarningMessageIfDue(array $event, DateTimeImmuta
         $content = $this->buildDailyMessageContent($event, $scheduledEventUrl);
         $allowedMentionRoleIds = $this->dailyAllowedMentionRoleIds($event);
         $embed = buildEventEmbed($event);
+        $dailyHash = $this->dailyEventSyncHash($event, $channelId, $content, $embed, $allowedMentionRoleIds);
 
         if ($existingMessageId !== '' && $existingChannelId !== '' && $existingChannelId === $channelId) {
+            $existingDailyHash = trim((string) ($event['discord_daily_sync_hash'] ?? ''));
+            if ($existingDailyHash === $dailyHash) {
+                return 'Skipped daily event embed update: no changes detected';
+            }
+
             try {
                 editDiscordMessage($existingChannelId, $existingMessageId, $content, [$embed], $allowedMentionRoleIds);
                 $this->syncPreferredRoleReactions($existingChannelId, $existingMessageId, (array) ($event['preferred_roles'] ?? []));
-                $this->events->markDailyPost((int) $event['id'], $existingChannelId, $existingMessageId);
+                $this->events->markDailyPost((int) $event['id'], $existingChannelId, $existingMessageId, $dailyHash);
                 return $mode === 'publish' ? 'Updated existing daily event embed' : 'Updated daily event embed';
             } catch (Throwable $e) {
                 if ($this->isDiscordOldMessageEditLimitError($e)) {
@@ -1393,7 +1574,7 @@ private function sendVoiceDeleteWarningMessageIfDue(array $event, DateTimeImmuta
             return 'Daily event embed was not posted';
         }
 
-        $this->events->markDailyPost((int) $event['id'], $channelId, $messageId);
+        $this->events->markDailyPost((int) $event['id'], $channelId, $messageId, $dailyHash);
         $this->syncPreferredRoleReactions($channelId, $messageId, (array) ($event['preferred_roles'] ?? []));
 
         return 'Posted daily event embed';

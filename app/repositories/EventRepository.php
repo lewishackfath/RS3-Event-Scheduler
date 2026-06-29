@@ -318,8 +318,10 @@ final class EventRepository
              SET discord_daily_channel_id = NULL,
                  discord_daily_message_id = NULL,
                  discord_daily_posted_at_utc = NULL,
+                 discord_daily_sync_hash = NULL,
                  discord_scheduled_event_id = NULL,
                  discord_scheduled_event_created_at_utc = NULL,
+                 discord_scheduled_event_sync_hash = NULL,
                  discord_voice_channel_id = NULL,
                  discord_voice_channel_created_at_utc = NULL,
                  discord_voice_warning_queued_at_utc = NULL
@@ -337,7 +339,8 @@ final class EventRepository
             'UPDATE clan_events
              SET discord_daily_channel_id = NULL,
                  discord_daily_message_id = NULL,
-                 discord_daily_posted_at_utc = NULL
+                 discord_daily_posted_at_utc = NULL,
+                 discord_daily_sync_hash = NULL
              WHERE id = :id AND clan_id = :clan_id'
         );
         $stmt->execute([
@@ -351,7 +354,8 @@ final class EventRepository
         $stmt = db()->prepare(
             'UPDATE clan_events
              SET discord_scheduled_event_id = NULL,
-                 discord_scheduled_event_created_at_utc = NULL
+                 discord_scheduled_event_created_at_utc = NULL,
+                 discord_scheduled_event_sync_hash = NULL
              WHERE id = :id AND clan_id = :clan_id'
         );
         $stmt->execute([
@@ -511,13 +515,14 @@ final class EventRepository
         // Legacy table removed. No-op retained for backwards compatibility.
     }
 
-    public function markDailyPost(int $eventId, string $channelId, string $messageId): void
+    public function markDailyPost(int $eventId, string $channelId, string $messageId, ?string $syncHash = null): void
     {
         $stmt = db()->prepare(
             'UPDATE clan_events
              SET discord_daily_channel_id = :channel_id,
                  discord_daily_message_id = :message_id,
-                 discord_daily_posted_at_utc = UTC_TIMESTAMP()
+                 discord_daily_posted_at_utc = UTC_TIMESTAMP(),
+                 discord_daily_sync_hash = :sync_hash
              WHERE id = :id AND clan_id = :clan_id'
         );
         $stmt->execute([
@@ -525,21 +530,24 @@ final class EventRepository
             'clan_id' => currentClanId(),
             'channel_id' => $channelId,
             'message_id' => $messageId,
+            'sync_hash' => $syncHash !== '' ? $syncHash : null,
         ]);
     }
 
-    public function markScheduledEvent(int $eventId, string $scheduledEventId): void
+    public function markScheduledEvent(int $eventId, string $scheduledEventId, ?string $syncHash = null): void
     {
         $stmt = db()->prepare(
             'UPDATE clan_events
              SET discord_scheduled_event_id = :scheduled_event_id,
-                 discord_scheduled_event_created_at_utc = UTC_TIMESTAMP()
+                 discord_scheduled_event_created_at_utc = UTC_TIMESTAMP(),
+                 discord_scheduled_event_sync_hash = :sync_hash
              WHERE id = :id AND clan_id = :clan_id'
         );
         $stmt->execute([
             'id' => $eventId,
             'clan_id' => currentClanId(),
             'scheduled_event_id' => $scheduledEventId,
+            'sync_hash' => $syncHash !== '' ? $syncHash : null,
         ]);
     }
 
@@ -635,7 +643,7 @@ public function enqueueBotCommand(
         return $row ?: null;
     }
 
-    public function recordWeeklyPost(string $weekStartUtc, string $channelId, string $messageId): void
+    public function recordWeeklyPost(string $weekStartUtc, string $channelId, string $messageId, ?string $summarySyncHash = null): void
     {
         $existing = $this->getWeeklyPost($weekStartUtc);
         if ($existing) {
@@ -643,6 +651,7 @@ public function enqueueBotCommand(
                 'UPDATE discord_weekly_posts
                  SET discord_channel_id = :channel_id,
                      discord_message_id = :message_id,
+                     discord_summary_sync_hash = :summary_sync_hash,
                      updated_at_utc = UTC_TIMESTAMP()
                  WHERE id = :id'
             );
@@ -650,27 +659,30 @@ public function enqueueBotCommand(
                 'id' => (int) $existing['id'],
                 'channel_id' => $channelId,
                 'message_id' => $messageId,
+                'summary_sync_hash' => $summarySyncHash !== '' ? $summarySyncHash : null,
             ]);
             return;
         }
 
         $stmt = db()->prepare(
-            'INSERT INTO discord_weekly_posts (clan_id, week_start_utc, discord_channel_id, discord_message_id, posted_at_utc)
-             VALUES (:clan_id, :week_start_utc, :channel_id, :message_id, UTC_TIMESTAMP())'
+            'INSERT INTO discord_weekly_posts (clan_id, week_start_utc, discord_channel_id, discord_message_id, discord_summary_sync_hash, posted_at_utc)
+             VALUES (:clan_id, :week_start_utc, :channel_id, :message_id, :summary_sync_hash, UTC_TIMESTAMP())'
         );
         $stmt->execute([
             'clan_id' => currentClanId(),
             'week_start_utc' => $weekStartUtc,
             'channel_id' => $channelId,
             'message_id' => $messageId,
+            'summary_sync_hash' => $summarySyncHash !== '' ? $summarySyncHash : null,
         ]);
     }
 
-    public function recordWeeklyGalleryPost(string $weekStartUtc, string $messageId): void
+    public function recordWeeklyGalleryPost(string $weekStartUtc, string $messageId, ?string $gallerySyncHash = null): void
     {
         $stmt = db()->prepare(
             'UPDATE discord_weekly_posts
              SET discord_gallery_message_id = :message_id,
+                 discord_gallery_sync_hash = :gallery_sync_hash,
                  discord_gallery_updated_at_utc = UTC_TIMESTAMP(),
                  updated_at_utc = UTC_TIMESTAMP()
              WHERE clan_id = :clan_id AND week_start_utc = :week_start_utc'
@@ -679,6 +691,7 @@ public function enqueueBotCommand(
             'clan_id' => currentClanId(),
             'week_start_utc' => $weekStartUtc,
             'message_id' => $messageId !== '' ? $messageId : null,
+            'gallery_sync_hash' => $gallerySyncHash !== '' ? $gallerySyncHash : null,
         ]);
     }
 
@@ -687,6 +700,7 @@ public function enqueueBotCommand(
         $stmt = db()->prepare(
             'UPDATE discord_weekly_posts
              SET discord_gallery_message_id = NULL,
+                 discord_gallery_sync_hash = NULL,
                  discord_gallery_updated_at_utc = UTC_TIMESTAMP(),
                  updated_at_utc = UTC_TIMESTAMP()
              WHERE clan_id = :clan_id AND week_start_utc = :week_start_utc'
