@@ -19,6 +19,104 @@ function discordBotToken(): string
     return $token;
 }
 
+
+function discordLookupTokenSecret(): string
+{
+    $parts = [
+        discordBotToken(),
+        (string) (appConfig()['discord_oauth']['client_secret'] ?? ''),
+        (string) (appConfig()['app']['url'] ?? ''),
+        'ClanEventScheduler:DiscordLookup:v1',
+    ];
+
+    return hash('sha256', implode('|', $parts));
+}
+
+function discordLookupBase64UrlEncode(string $value): string
+{
+    return rtrim(strtr(base64_encode($value), '+/', '-_'), '=');
+}
+
+function discordLookupBase64UrlDecode(string $value): string
+{
+    $value = strtr($value, '-_', '+/');
+    $padding = strlen($value) % 4;
+    if ($padding > 0) {
+        $value .= str_repeat('=', 4 - $padding);
+    }
+
+    $decoded = base64_decode($value, true);
+    return $decoded === false ? '' : $decoded;
+}
+
+function issueDiscordLookupToken(): string
+{
+    if (session_status() !== PHP_SESSION_ACTIVE) {
+        session_start();
+    }
+
+    $sessionId = session_id();
+    if ($sessionId === '') {
+        throw new RuntimeException('Cannot issue Discord lookup token without an active PHP session.');
+    }
+
+    $issuedAt = time();
+    $nonce = bin2hex(random_bytes(8));
+    $signaturePayload = $issuedAt . '|' . $sessionId . '|' . $nonce;
+    $signature = hash_hmac('sha256', $signaturePayload, discordLookupTokenSecret());
+
+    return discordLookupBase64UrlEncode(json_encode([
+        'iat' => $issuedAt,
+        'sid' => $sessionId,
+        'nonce' => $nonce,
+        'sig' => $signature,
+    ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '');
+}
+
+function verifyDiscordLookupToken(string $token, int $maxAgeSeconds = 21600): bool
+{
+    $token = trim($token);
+    if ($token === '') {
+        return false;
+    }
+
+    if (session_status() !== PHP_SESSION_ACTIVE) {
+        session_start();
+    }
+
+    $sessionId = session_id();
+    if ($sessionId === '') {
+        return false;
+    }
+
+    $decoded = json_decode(discordLookupBase64UrlDecode($token), true);
+    if (!is_array($decoded)) {
+        return false;
+    }
+
+    $issuedAt = (int) ($decoded['iat'] ?? 0);
+    $tokenSessionId = (string) ($decoded['sid'] ?? '');
+    $nonce = (string) ($decoded['nonce'] ?? '');
+    $signature = (string) ($decoded['sig'] ?? '');
+
+    if ($issuedAt <= 0 || $tokenSessionId === '' || $nonce === '' || $signature === '') {
+        return false;
+    }
+
+    if (!hash_equals($sessionId, $tokenSessionId)) {
+        return false;
+    }
+
+    $now = time();
+    if ($issuedAt > $now + 60 || ($now - $issuedAt) > $maxAgeSeconds) {
+        return false;
+    }
+
+    $expected = hash_hmac('sha256', $issuedAt . '|' . $tokenSessionId . '|' . $nonce, discordLookupTokenSecret());
+    return hash_equals($expected, $signature);
+}
+
+
 function discordApiRequest(string $method, string $endpoint, array $payload = [], array $query = []): array
 {
     $token = discordBotToken();

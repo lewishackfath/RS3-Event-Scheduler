@@ -26,6 +26,7 @@ $recurrenceUnit = strtolower(trim((string) ($formValues['recurrence_unit'] ?? 'w
 if (!in_array($recurrenceUnit, ['days', 'weeks'], true)) {
     $recurrenceUnit = 'weeks';
 }
+$discordLookupToken = issueDiscordLookupToken();
 ?>
 <div class="card">
     <form method="post">
@@ -200,6 +201,7 @@ if (!in_array($recurrenceUnit, ['days', 'weeks'], true)) {
     const preferredRoleTemplate = document.getElementById('preferred-role-template');
     const addPreferredRoleButton = document.getElementById('add-preferred-role');
     const clanTimezone = <?= json_encode(appConfig()['clan']['timezone']) ?>;
+    const discordLookupToken = <?= json_encode($discordLookupToken) ?>;
     let controller = null;
     let isSyncingTimeFields = false;
 
@@ -387,7 +389,8 @@ if (!in_array($recurrenceUnit, ['days', 'weeks'], true)) {
             cache: 'no-store',
             headers: {
                 'Accept': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest'
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-Discord-Lookup-Token': discordLookupToken
             }
         }).then(function (response) {
             return response.text().then(function (text) {
@@ -473,7 +476,8 @@ if (!in_array($recurrenceUnit, ['days', 'weeks'], true)) {
             cache: 'no-store',
             headers: {
                 'Accept': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest'
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-Discord-Lookup-Token': discordLookupToken
             }
         })
             .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })

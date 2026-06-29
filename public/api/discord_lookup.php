@@ -92,15 +92,34 @@ function discordLookupDiagnosticStep(string $name, callable $callback): array
     }
 }
 
+function discordLookupRequestToken(): string
+{
+    $headerToken = trim((string) ($_SERVER['HTTP_X_DISCORD_LOOKUP_TOKEN'] ?? ''));
+    if ($headerToken !== '') {
+        return $headerToken;
+    }
+
+    return trim((string) ($_GET['lookup_token'] ?? ''));
+}
+
+function discordLookupTokenIsValid(): bool
+{
+    return verifyDiscordLookupToken(discordLookupRequestToken());
+}
+
 function discordLookupSessionDiagnostics(): array
 {
     $cookieName = session_name();
     $cookieNames = array_keys($_COOKIE);
+    $token = discordLookupRequestToken();
 
     return [
         'session_name' => $cookieName,
         'session_id_present' => session_id() !== '',
         'session_cookie_received' => isset($_COOKIE[$cookieName]),
+        'auth_user_present' => isset($_SESSION['auth_user']),
+        'lookup_token_present' => $token !== '',
+        'lookup_token_valid' => $token !== '' && verifyDiscordLookupToken($token),
         'received_cookie_names' => $cookieNames,
         'request' => [
             'host' => (string) ($_SERVER['HTTP_HOST'] ?? ''),
@@ -113,14 +132,16 @@ function discordLookupSessionDiagnostics(): array
 }
 
 try {
-    if (!isAuthenticated()) {
+    $type = strtolower(trim((string) ($_GET['type'] ?? '')));
+    $isAuthorisedLookup = isAuthenticated() || discordLookupTokenIsValid() || $type === 'diagnostics';
+
+    if (!$isAuthorisedLookup) {
         discordLookupJsonResponse([
-            'error' => 'You are not logged in, or your session has expired. Refresh the page and log in again, then retry the Discord lookup.',
+            'error' => 'You are not logged in, or your lookup token has expired. Refresh the event form and retry the Discord lookup.',
             'session' => discordLookupSessionDiagnostics(),
         ], 401);
     }
 
-    $type = strtolower(trim((string) ($_GET['type'] ?? '')));
     $guildId = trim((string) appConfig()['discord']['guild_id']);
 
     if ($guildId === '') {
@@ -173,6 +194,7 @@ try {
                 'bot_token_prefix_handled' => true,
                 'logged_in_discord_user_id' => (string) (currentUser()['discord_user_id'] ?? ''),
             ],
+            'session' => discordLookupSessionDiagnostics(),
             'bot' => [
                 'id' => (string) ($botData['id'] ?? ''),
                 'username' => (string) ($botData['username'] ?? ''),
