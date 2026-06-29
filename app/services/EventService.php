@@ -13,10 +13,23 @@ final class EventService
         $hostName = trim((string) ($input['host_name'] ?? ''));
         $hostDiscordUserId = trim((string) ($input['host_discord_user_id'] ?? ''));
         $eventStartUtcInput = trim((string) ($input['event_start_utc_input'] ?? ''));
+        $eventTimeSource = strtolower(trim((string) ($input['event_time_source'] ?? 'local')));
         $isRecurring = isset($input['is_recurring_weekly']) ? 1 : 0;
         $recurringUntilDate = trim((string) ($input['recurring_until_date'] ?? ''));
         $recurrenceInterval = $this->normaliseRecurrenceInterval($input['recurrence_interval'] ?? 1);
         $recurrenceUnit = $this->normaliseRecurrenceUnit((string) ($input['recurrence_unit'] ?? 'weeks'));
+
+        if (!in_array($eventTimeSource, ['local', 'utc'], true)) {
+            $eventTimeSource = 'local';
+        }
+
+        $eventStartUtc = null;
+        if ($eventTimeSource === 'utc' && $eventStartUtcInput !== '') {
+            $eventStartUtc = utcInputToUtc($eventStartUtcInput);
+            $eventLocal = utcToClanLocal($eventStartUtc);
+            $eventDate = $eventLocal->format('Y-m-d');
+            $eventTime = $eventLocal->format('H:i');
+        }
 
         if ($eventName === '') {
             throw new InvalidArgumentException('Event name is required.');
@@ -36,9 +49,13 @@ final class EventService
             $recurrenceUnit = 'weeks';
         }
 
-        $eventStartUtc = $eventStartUtcInput !== ''
-            ? utcInputToUtc($eventStartUtcInput)
-            : clanLocalToUtc($eventDate, $eventTime);
+        // The browser mirrors the local and UTC fields for convenience, but the
+        // backend must only trust the side the user actively edited. This avoids
+        // saving a browser-calculated UTC value that can be wrong during daylight
+        // saving transitions.
+        if ($eventStartUtc === null) {
+            $eventStartUtc = clanLocalToUtc($eventDate, $eventTime);
+        }
 
         return [
             'event_name' => $eventName,

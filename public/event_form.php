@@ -10,6 +10,10 @@ $selectedHostId = (string) ($formValues['host_discord_user_id'] ?? '');
 $selectedChannelId = (string) ($formValues['discord_channel_id'] ?? '');
 $selectedMentionRoleId = (string) ($formValues['discord_mention_role_id'] ?? '');
 $utcStartInput = (string) ($formValues['event_start_utc_input'] ?? '');
+$eventTimeSource = strtolower(trim((string) ($formValues['event_time_source'] ?? 'local')));
+if (!in_array($eventTimeSource, ['local', 'utc'], true)) {
+    $eventTimeSource = 'local';
+}
 $preferredRoles = is_array($formValues['preferred_roles'] ?? null) ? $formValues['preferred_roles'] : [];
 $currentPage = basename((string) ($_SERVER['PHP_SELF'] ?? ''));
 $isEditPage = $currentPage === 'event_edit.php';
@@ -42,7 +46,8 @@ if (!in_array($recurrenceUnit, ['days', 'weeks'], true)) {
             <div class="field">
                 <label for="event_start_utc_input">Start Time in UTC (Game Time)</label>
                 <input type="datetime-local" id="event_start_utc_input" name="event_start_utc_input" value="<?= e($utcStartInput) ?>">
-                <div class="muted" style="margin-top:6px;">Optional shortcut. Enter the UTC game time here and the local date/time fields will update automatically.</div>
+                <input type="hidden" id="event_time_source" name="event_time_source" value="<?= e($eventTimeSource) ?>">
+                <div class="muted" style="margin-top:6px;">Optional shortcut. Enter the UTC game time here and the local date/time fields will update automatically using the configured clan timezone.</div>
             </div>
             <div class="field">
                 <label for="duration_minutes">Duration Minutes</label>
@@ -190,6 +195,7 @@ if (!in_array($recurrenceUnit, ['days', 'weeks'], true)) {
     const eventDateInput = document.getElementById('event_date');
     const eventTimeInput = document.getElementById('event_time');
     const utcStartInput = document.getElementById('event_start_utc_input');
+    const eventTimeSourceInput = document.getElementById('event_time_source');
     const preferredRolesList = document.getElementById('preferred-roles-list');
     const preferredRoleTemplate = document.getElementById('preferred-role-template');
     const addPreferredRoleButton = document.getElementById('add-preferred-role');
@@ -219,37 +225,32 @@ if (!in_array($recurrenceUnit, ['days', 'weeks'], true)) {
     }
 
 
-    function pad(value) {
-        return String(value).padStart(2, '0');
+    let timeConversionRequestId = 0;
+
+    function markTimeSource(source) {
+        if (eventTimeSourceInput) {
+            eventTimeSourceInput.value = source === 'utc' ? 'utc' : 'local';
+        }
     }
 
-    function getTimeZoneOffsetMinutes(date, timeZone) {
-        const formatter = new Intl.DateTimeFormat('en-CA', {
-            timeZone: timeZone,
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            hour12: false,
-        });
-        const parts = formatter.formatToParts(date);
-        const map = {};
-        parts.forEach(function (part) {
-            if (part.type !== 'literal') {
-                map[part.type] = part.value;
-            }
-        });
-        const asUtc = Date.UTC(
-            Number(map.year),
-            Number(map.month) - 1,
-            Number(map.day),
-            Number(map.hour),
-            Number(map.minute),
-            Number(map.second)
-        );
-        return Math.round((asUtc - date.getTime()) / 60000);
+    function convertTime(params) {
+        const requestId = ++timeConversionRequestId;
+        const query = new URLSearchParams(params);
+        return fetch('api/timezone_convert.php?' + query.toString())
+            .then(function (response) {
+                return response.json().then(function (data) {
+                    return { ok: response.ok, data: data, requestId: requestId };
+                });
+            })
+            .then(function (payload) {
+                if (payload.requestId !== timeConversionRequestId) {
+                    return null;
+                }
+                if (!payload.ok) {
+                    throw new Error(payload.data && payload.data.error ? payload.data.error : 'Could not convert time.');
+                }
+                return payload.data;
+            });
     }
 
     function syncUtcFromLocal() {
@@ -257,19 +258,24 @@ if (!in_array($recurrenceUnit, ['days', 'weeks'], true)) {
         if (!eventDateInput.value || !eventTimeInput.value) return;
         if (isSyncingTimeFields) return;
 
-        isSyncingTimeFields = true;
-        try {
-            const parts = eventDateInput.value.split('-').map(Number);
-            const timeParts = eventTimeInput.value.split(':').map(Number);
-            if (parts.length !== 3 || timeParts.length < 2) return;
-
-            const utcGuessMs = Date.UTC(parts[0], parts[1] - 1, parts[2], timeParts[0], timeParts[1], 0);
-            const offsetMinutes = getTimeZoneOffsetMinutes(new Date(utcGuessMs), clanTimezone);
-            const utcDate = new Date(utcGuessMs - (offsetMinutes * 60000));
-            utcStartInput.value = utcDate.getUTCFullYear() + '-' + pad(utcDate.getUTCMonth() + 1) + '-' + pad(utcDate.getUTCDate()) + 'T' + pad(utcDate.getUTCHours()) + ':' + pad(utcDate.getUTCMinutes());
-        } finally {
-            isSyncingTimeFields = false;
-        }
+        markTimeSource('local');
+        convertTime({
+            direction: 'local_to_utc',
+            date: eventDateInput.value,
+            time: eventTimeInput.value,
+        }).then(function (data) {
+            if (!data || !data.utc_input) return;
+            isSyncingTimeFields = true;
+            try {
+                utcStartInput.value = data.utc_input;
+            } finally {
+                isSyncingTimeFields = false;
+            }
+        }).catch(function () {
+            // Saving still remains safe: when the local fields were edited, PHP
+            // converts them with DateTimeZone on submit instead of trusting this
+            // mirrored UTC display field.
+        });
     }
 
     function syncLocalFromUtc() {
@@ -277,32 +283,20 @@ if (!in_array($recurrenceUnit, ['days', 'weeks'], true)) {
         if (!utcStartInput.value) return;
         if (isSyncingTimeFields) return;
 
-        const dt = new Date(utcStartInput.value + ':00Z');
-        if (Number.isNaN(dt.getTime())) return;
-
-        isSyncingTimeFields = true;
-        try {
-            const formatter = new Intl.DateTimeFormat('en-CA', {
-                timeZone: clanTimezone,
-                year: 'numeric',
-                month: '2-digit',
-                day: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit',
-                hour12: false,
-            });
-            const parts = formatter.formatToParts(dt);
-            const map = {};
-            parts.forEach(function (part) {
-                if (part.type !== 'literal') {
-                    map[part.type] = part.value;
-                }
-            });
-            eventDateInput.value = map.year + '-' + map.month + '-' + map.day;
-            eventTimeInput.value = map.hour + ':' + map.minute;
-        } finally {
-            isSyncingTimeFields = false;
-        }
+        markTimeSource('utc');
+        convertTime({
+            direction: 'utc_to_local',
+            utc: utcStartInput.value,
+        }).then(function (data) {
+            if (!data || !data.local_date || !data.local_time) return;
+            isSyncingTimeFields = true;
+            try {
+                eventDateInput.value = data.local_date;
+                eventTimeInput.value = data.local_time;
+            } finally {
+                isSyncingTimeFields = false;
+            }
+        }).catch(function () {});
     }
 
 

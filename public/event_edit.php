@@ -26,6 +26,7 @@ $formValues = [
     'event_date' => $local->format('Y-m-d'),
     'event_time' => $local->format('H:i'),
     'event_start_utc_input' => utcToInputValue($event['event_start_utc']),
+    'event_time_source' => 'local',
     'duration_minutes' => $event['duration_minutes'],
     'discord_channel_id' => $event['discord_channel_id'],
     'preferred_roles' => $event['preferred_roles'] ?? [],
@@ -85,7 +86,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             setFlash('success', 'Event updated successfully. Weekly summary refreshed.');
         }
-        redirect('index.php?date=' . urlencode((string) $_POST['event_date']));
+        redirect('index.php?date=' . urlencode(utcToClanLocal((string) $normalised['event_start_utc'])->format('Y-m-d')));
     } catch (Throwable $e) {
         setFlash('error', $e->getMessage());
         redirect('event_edit.php?id=' . $id);

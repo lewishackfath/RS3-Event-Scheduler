@@ -11,6 +11,7 @@ $formValues = [
     'event_date' => (string) ($_GET['date'] ?? ''),
     'event_time' => '',
     'event_start_utc_input' => '',
+    'event_time_source' => 'local',
     'duration_minutes' => '',
     'discord_channel_id' => '',
     'preferred_roles' => [],
@@ -33,9 +34,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     try {
         $service = new EventService();
+        $normalised = $service->normaliseFormData($_POST);
         $service->createFromForm(new EventRepository(), $_POST);
+        $redirectDate = utcToClanLocal((string) $normalised['event_start_utc'])->format('Y-m-d');
         setFlash('success', !empty($_POST['is_recurring_weekly']) ? 'Recurring event series created successfully.' : 'Event created successfully.');
-        redirect('index.php?date=' . urlencode((string) $_POST['event_date']));
+        redirect('index.php?date=' . urlencode($redirectDate));
     } catch (Throwable $e) {
         setFlash('error', $e->getMessage());
         redirect('event_create.php?date=' . urlencode((string) ($_POST['event_date'] ?? '')));
