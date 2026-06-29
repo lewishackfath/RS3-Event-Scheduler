@@ -55,19 +55,21 @@ $discordLookupToken = issueDiscordLookupToken();
                 <input type="number" id="duration_minutes" name="duration_minutes" min="0" value="<?= e((string) ($formValues['duration_minutes'] ?? '')) ?>">
             </div>
             <div class="field">
-                <label for="discord_channel_id">Discord Channel Override</label>
-                <input type="search" id="discord_channel_search" class="select-search-input" placeholder="Search channels…" autocomplete="off" spellcheck="false">
-                <select id="discord_channel_id" name="discord_channel_id" data-selected-channel="<?= e($selectedChannelId) ?>">
-                    <option value="">Use default daily channel</option>
-                </select>
+                <label for="discord_channel_picker">Discord Channel Override</label>
+                <div class="inline-combobox" data-inline-combobox>
+                    <input type="hidden" id="discord_channel_id" name="discord_channel_id" value="<?= e($selectedChannelId) ?>" data-selected-channel="<?= e($selectedChannelId) ?>">
+                    <input type="text" id="discord_channel_picker" class="inline-combobox-input" placeholder="Use default daily channel" autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="discord_channel_options">
+                    <div id="discord_channel_options" class="inline-combobox-options" role="listbox" hidden></div>
+                </div>
                 <div id="channel-picker-status" class="muted" style="margin-top:6px;">Loading available channels…</div><div class="muted" style="margin-top:6px;">Leave blank to use <code>DISCORD_DAILY_EVENT_CHANNEL_ID</code> from your .env file.</div>
             </div>
             <div class="field">
-                <label for="discord_mention_role_id">Role to Mention in Daily Listing</label>
-                <input type="search" id="discord_role_search" class="select-search-input" placeholder="Search roles…" autocomplete="off" spellcheck="false">
-                <select id="discord_mention_role_id" name="discord_mention_role_id" data-selected-role="<?= e($selectedMentionRoleId) ?>">
-                    <option value="">No role mention</option>
-                </select>
+                <label for="discord_role_picker">Role to Mention in Daily Listing</label>
+                <div class="inline-combobox" data-inline-combobox>
+                    <input type="hidden" id="discord_mention_role_id" name="discord_mention_role_id" value="<?= e($selectedMentionRoleId) ?>" data-selected-role="<?= e($selectedMentionRoleId) ?>">
+                    <input type="text" id="discord_role_picker" class="inline-combobox-input" placeholder="No role mention" autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="discord_role_options">
+                    <div id="discord_role_options" class="inline-combobox-options" role="listbox" hidden></div>
+                </div>
                 <div id="role-picker-status" class="muted" style="margin-top:6px;">Loading available roles…</div>
                 <div class="muted" style="margin-top:6px;">Optional. The selected Discord role will be mentioned in the daily event listing.</div>
             </div>
@@ -191,11 +193,13 @@ $discordLookupToken = issueDiscordLookupToken();
     const recurringToggle = document.getElementById('is_recurring_weekly');
     const recurringWrap = document.getElementById('recurring-until-wrap');
     const recurrenceOptionsWrap = document.getElementById('recurrence-options-wrap');
-    const channelSearch = document.getElementById('discord_channel_search');
-    const channelSelect = document.getElementById('discord_channel_id');
+    const channelValueInput = document.getElementById('discord_channel_id');
+    const channelPickerInput = document.getElementById('discord_channel_picker');
+    const channelOptionsMenu = document.getElementById('discord_channel_options');
     const channelStatus = document.getElementById('channel-picker-status');
-    const roleSearch = document.getElementById('discord_role_search');
-    const roleSelect = document.getElementById('discord_mention_role_id');
+    const roleValueInput = document.getElementById('discord_mention_role_id');
+    const rolePickerInput = document.getElementById('discord_role_picker');
+    const roleOptionsMenu = document.getElementById('discord_role_options');
     const roleStatus = document.getElementById('role-picker-status');
     const eventDateInput = document.getElementById('event_date');
     const eventTimeInput = document.getElementById('event_time');
@@ -432,76 +436,205 @@ $discordLookupToken = issueDiscordLookupToken();
         return String(value || '').toLowerCase().replace(/[#@]/g, '').trim();
     }
 
-    function renderSearchableSelect(select, options, searchValue) {
-        if (!select) return;
+    function createInlineCombobox(config) {
+        const valueInput = config.valueInput;
+        const textInput = config.textInput;
+        const menu = config.menu;
+        const emptyLabel = config.emptyLabel || 'None';
+        let options = [];
+        let activeIndex = -1;
+        let closeTimer = null;
 
-        const selectedValue = select.value || select.getAttribute('data-selected-value') || '';
-        const query = normaliseSearchText(searchValue);
-        const defaultOption = options.length ? options[0] : { value: '', label: 'None', search: '' };
-        let visibleOptions = options;
+        function currentValue() {
+            return valueInput ? String(valueInput.value || '') : '';
+        }
 
-        if (query !== '') {
-            visibleOptions = options.filter(function (option, index) {
-                if (index === 0 && option.value === '') return true;
-                return normaliseSearchText(option.search || option.label || option.value).indexOf(query) !== -1;
+        function selectedOption() {
+            const selected = currentValue();
+            const match = options.find(function (option) {
+                return String(option.value || '') === selected;
+            });
+            return match || options[0] || { value: '', label: emptyLabel, search: emptyLabel };
+        }
+
+        function setExpanded(expanded) {
+            if (textInput) {
+                textInput.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+            }
+        }
+
+        function closeMenu() {
+            if (!menu) return;
+            menu.hidden = true;
+            menu.innerHTML = '';
+            activeIndex = -1;
+            setExpanded(false);
+        }
+
+        function optionMatches(option, query) {
+            if (query === '') return true;
+            return normaliseSearchText(option.search || option.label || option.value).indexOf(query) !== -1;
+        }
+
+        function visibleOptions(query) {
+            const normalisedQuery = normaliseSearchText(query);
+            return options.filter(function (option) {
+                return optionMatches(option, normalisedQuery);
             });
         }
 
-        if (!visibleOptions.length) {
-            visibleOptions = [defaultOption];
+        function syncTextFromValue() {
+            if (!textInput) return;
+            const selected = selectedOption();
+            textInput.value = selected.label || emptyLabel;
         }
 
-        const selectedOption = options.find(function (option) {
-            return String(option.value) === String(selectedValue) && selectedValue !== '';
-        });
-
-        if (selectedOption && !visibleOptions.some(function (option) { return String(option.value) === String(selectedValue); })) {
-            visibleOptions = [defaultOption, selectedOption].concat(visibleOptions.filter(function (option) {
-                return String(option.value) !== String(defaultOption.value);
-            }));
-        }
-
-        select.innerHTML = '';
-        visibleOptions.forEach(function (item) {
-            const option = document.createElement('option');
-            option.value = item.value;
-            option.textContent = item.label;
-            if (item.disabled) option.disabled = true;
-            select.appendChild(option);
-        });
-
-        if (visibleOptions.some(function (option) { return String(option.value) === String(selectedValue); })) {
-            select.value = selectedValue;
-        } else {
-            select.value = defaultOption.value || '';
-        }
-    }
-
-    function bindSearchableSelect(searchInput, select, optionsGetter, statusElement, itemLabel) {
-        if (!searchInput || !select) return;
-
-        searchInput.addEventListener('input', function () {
-            const options = optionsGetter();
-            renderSearchableSelect(select, options, searchInput.value);
-            if (statusElement && searchInput.value.trim() !== '') {
-                const total = Math.max(0, options.length - 1);
-                const visible = Math.max(0, select.options.length - 1);
-                statusElement.textContent = 'Showing ' + visible + ' of ' + total + ' ' + itemLabel + '.';
+        function selectOption(option) {
+            if (!option || option.disabled) return;
+            if (valueInput) {
+                valueInput.value = String(option.value || '');
+                valueInput.setAttribute('data-selected-value', valueInput.value);
             }
-        });
+            if (textInput) {
+                textInput.value = option.label || emptyLabel;
+            }
+            closeMenu();
+        }
 
-        select.addEventListener('change', function () {
-            select.setAttribute('data-selected-value', select.value || '');
-        });
+        function renderMenu(query) {
+            if (!menu || !textInput) return;
+            const matches = visibleOptions(query);
+            menu.innerHTML = '';
+
+            if (!matches.length) {
+                const empty = document.createElement('div');
+                empty.className = 'inline-combobox-empty muted';
+                empty.textContent = 'No matching options found.';
+                menu.appendChild(empty);
+                menu.hidden = false;
+                setExpanded(true);
+                return;
+            }
+
+            matches.forEach(function (option, index) {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'inline-combobox-option';
+                button.setAttribute('role', 'option');
+                button.setAttribute('data-option-index', String(index));
+                button.textContent = option.label || emptyLabel;
+                if (String(option.value || '') === currentValue()) {
+                    button.classList.add('is-selected');
+                    button.setAttribute('aria-selected', 'true');
+                    activeIndex = index;
+                }
+                button.addEventListener('mousedown', function (event) {
+                    event.preventDefault();
+                    selectOption(option);
+                });
+                menu.appendChild(button);
+            });
+
+            if (activeIndex < 0 || activeIndex >= matches.length) {
+                activeIndex = 0;
+            }
+            updateActiveOption(matches);
+            menu.hidden = false;
+            setExpanded(true);
+        }
+
+        function updateActiveOption(matches) {
+            if (!menu) return;
+            const buttons = Array.prototype.slice.call(menu.querySelectorAll('.inline-combobox-option'));
+            buttons.forEach(function (button, index) {
+                const isActive = index === activeIndex;
+                button.classList.toggle('is-active', isActive);
+                if (isActive) {
+                    button.setAttribute('aria-current', 'true');
+                } else {
+                    button.removeAttribute('aria-current');
+                }
+            });
+            if (buttons[activeIndex]) {
+                buttons[activeIndex].scrollIntoView({ block: 'nearest' });
+            }
+        }
+
+        if (textInput) {
+            textInput.addEventListener('focus', function () {
+                window.clearTimeout(closeTimer);
+                textInput.select();
+                renderMenu('');
+            });
+
+            textInput.addEventListener('input', function () {
+                activeIndex = -1;
+                renderMenu(textInput.value);
+            });
+
+            textInput.addEventListener('blur', function () {
+                closeTimer = window.setTimeout(function () {
+                    syncTextFromValue();
+                    closeMenu();
+                }, 120);
+            });
+
+            textInput.addEventListener('keydown', function (event) {
+                const matches = visibleOptions(textInput.value);
+                if (event.key === 'ArrowDown') {
+                    event.preventDefault();
+                    if (menu.hidden) renderMenu(textInput.value);
+                    activeIndex = Math.min(matches.length - 1, activeIndex + 1);
+                    updateActiveOption(matches);
+                } else if (event.key === 'ArrowUp') {
+                    event.preventDefault();
+                    if (menu.hidden) renderMenu(textInput.value);
+                    activeIndex = Math.max(0, activeIndex - 1);
+                    updateActiveOption(matches);
+                } else if (event.key === 'Enter') {
+                    if (!menu.hidden && matches[activeIndex]) {
+                        event.preventDefault();
+                        selectOption(matches[activeIndex]);
+                    }
+                } else if (event.key === 'Escape') {
+                    syncTextFromValue();
+                    closeMenu();
+                }
+            });
+        }
+
+        return {
+            setOptions: function (newOptions) {
+                options = Array.isArray(newOptions) ? newOptions.slice() : [];
+                const selected = currentValue();
+                if (selected !== '' && !options.some(function (option) { return String(option.value || '') === selected; })) {
+                    options.push({ value: selected, label: selected + ' · previously selected', search: selected });
+                }
+                syncTextFromValue();
+                closeMenu();
+            },
+            refresh: function () {
+                syncTextFromValue();
+            }
+        };
     }
+
+    const channelCombobox = createInlineCombobox({
+        valueInput: channelValueInput,
+        textInput: channelPickerInput,
+        menu: channelOptionsMenu,
+        emptyLabel: 'Use default daily channel'
+    });
+    const roleCombobox = createInlineCombobox({
+        valueInput: roleValueInput,
+        textInput: rolePickerInput,
+        menu: roleOptionsMenu,
+        emptyLabel: 'No role mention'
+    });
 
     function loadMentionRoles() {
-        const selectedRole = roleSelect ? (roleSelect.getAttribute('data-selected-role') || '') : '';
-        if (roleSelect) roleSelect.setAttribute('data-selected-value', selectedRole);
-
         fetchJsonWithStatus('api/discord_lookup.php?type=roles')
             .then(function (data) {
-                if (!roleSelect) return;
                 const roles = Array.isArray(data.items) ? data.items : [];
                 roleOptions = [{ value: '', label: 'No role mention', search: 'no role mention none' }].concat(roles.map(function (role) {
                     role = role || {};
@@ -512,21 +645,17 @@ $discordLookupToken = issueDiscordLookupToken();
                         search: [name, role.id || '', role.mentionable ? 'mentionable' : 'not mentionable'].join(' ')
                     };
                 }).filter(function (role) { return role.value !== ''; }));
-                renderSearchableSelect(roleSelect, roleOptions, roleSearch ? roleSearch.value : '');
-                if (roleStatus) roleStatus.textContent = roles.length ? 'Loaded ' + roles.length + ' roles. Type above to search.' : 'No selectable roles found.';
+                roleCombobox.setOptions(roleOptions);
+                if (roleStatus) roleStatus.textContent = roles.length ? 'Loaded ' + roles.length + ' roles. Type in the field to search.' : 'No selectable roles found.';
             })
             .catch(function (err) {
                 roleOptions = [{ value: '', label: 'No role mention', search: 'no role mention none' }];
-                renderSearchableSelect(roleSelect, roleOptions, '');
+                roleCombobox.setOptions(roleOptions);
                 if (roleStatus) roleStatus.textContent = 'Could not load roles automatically: ' + (err.message || 'Discord lookup failed.');
             });
     }
 
     function loadChannels() {
-        if (!channelSelect) return;
-        const selected = channelSelect.getAttribute('data-selected-channel') || '';
-        channelSelect.setAttribute('data-selected-value', selected);
-
         fetchJsonWithStatus('api/discord_lookup.php?type=channels')
             .then(function (data) {
                 const items = Array.isArray(data.items) ? data.items : [];
@@ -540,15 +669,12 @@ $discordLookupToken = issueDiscordLookupToken();
                         search: [name, item.id || '', typeLabel, item.parent_id || ''].join(' ')
                     };
                 }).filter(function (channel) { return channel.value !== ''; }));
-                renderSearchableSelect(channelSelect, channelOptions, channelSearch ? channelSearch.value : '');
-                if (channelStatus) channelStatus.textContent = items.length ? 'Loaded ' + items.length + ' channels. Type above to search.' : 'No channels found. You can still use the default channel.';
+                channelCombobox.setOptions(channelOptions);
+                if (channelStatus) channelStatus.textContent = items.length ? 'Loaded ' + items.length + ' channels. Type in the field to search.' : 'No channels found. You can still use the default channel.';
             })
             .catch(function (err) {
                 channelOptions = [{ value: '', label: 'Use default daily channel', search: 'default daily channel' }];
-                if (selected !== '') {
-                    channelOptions.push({ value: selected, label: selected + ' · previously selected', search: selected });
-                }
-                renderSearchableSelect(channelSelect, channelOptions, '');
+                channelCombobox.setOptions(channelOptions);
                 if (channelStatus) channelStatus.textContent = 'Could not load channels automatically: ' + err.message;
             });
     }
@@ -615,13 +741,10 @@ $discordLookupToken = issueDiscordLookupToken();
         syncUtcFromLocal();
     }
 
-    bindSearchableSelect(channelSearch, channelSelect, function () { return channelOptions; }, channelStatus, 'channels');
-    bindSearchableSelect(roleSearch, roleSelect, function () { return roleOptions; }, roleStatus, 'roles');
-
-    if (channelSelect) {
+    if (channelValueInput && channelPickerInput) {
         loadChannels();
     }
-    if (roleSelect) {
+    if (roleValueInput && rolePickerInput) {
         loadMentionRoles();
     }
 })();

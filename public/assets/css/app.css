@@ -285,13 +285,49 @@ input,textarea,select{
 input::placeholder,textarea::placeholder{color:#8c6b43}
 select{appearance:auto}
 
-.select-search-input{
-    margin-bottom:8px;
-    background:
-        linear-gradient(180deg,rgba(255,248,224,.96),rgba(239,218,174,.96));
+.inline-combobox{
+    position:relative;
 }
-.select-search-input::-webkit-search-cancel-button{cursor:pointer}
-.select-search-input + select{margin-top:0}
+.inline-combobox-input{
+    padding-right:38px;
+    background:
+        linear-gradient(45deg,transparent 50%,#5b3a1a 50%) calc(100% - 21px) 50% / 7px 7px no-repeat,
+        linear-gradient(135deg,#5b3a1a 50%,transparent 50%) calc(100% - 14px) 50% / 7px 7px no-repeat,
+        linear-gradient(180deg,#fff3cf,#ead2a0);
+}
+.inline-combobox-options{
+    position:absolute;
+    left:0;
+    right:0;
+    top:100%;
+    margin-top:6px;
+    max-height:260px;
+    overflow:auto;
+    background:#f2dfb4;
+    border:1px solid rgba(91,58,26,.46);
+    border-radius:14px;
+    z-index:35;
+    box-shadow:0 14px 32px rgba(43,25,9,.3);
+}
+.inline-combobox-option{
+    display:block;
+    width:100%;
+    background:none;
+    border:0;
+    border-bottom:1px solid rgba(91,58,26,.16);
+    border-radius:0;
+    box-shadow:none;
+    padding:10px 12px;
+    text-align:left;
+    color:var(--ink);
+    cursor:pointer;
+    text-shadow:none;
+}
+.inline-combobox-option:last-child{border-bottom:0}
+.inline-combobox-option:hover,
+.inline-combobox-option.is-active{background:#e3c88f}
+.inline-combobox-option.is-selected{font-weight:800}
+.inline-combobox-empty{padding:10px 12px}
 textarea{min-height:110px;resize:vertical}
 input[type="checkbox"],
 input[type="radio"]{
@@ -306,7 +342,7 @@ input[type="radio"]{
     box-shadow:none;
 }
 input[type="radio"]{border-radius:999px}
-input:focus,textarea:focus,select:focus{outline:none;border-color:#936326;box-shadow:0 0 0 3px rgba(150,99,38,.2), inset 0 2px 5px rgba(57,34,12,.1)}
+input:focus,textarea:focus,select:focus,.inline-combobox-input:focus{outline:none;border-color:#936326;box-shadow:0 0 0 3px rgba(150,99,38,.2), inset 0 2px 5px rgba(57,34,12,.1)}
 input[type="checkbox"]:focus,
 input[type="radio"]:focus{box-shadow:0 0 0 3px rgba(150,99,38,.2)}
 label{display:block;margin-bottom:6px;font-weight:800;color:#3b240f}
