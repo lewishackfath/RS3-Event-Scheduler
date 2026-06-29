@@ -56,6 +56,7 @@ $discordLookupToken = issueDiscordLookupToken();
             </div>
             <div class="field">
                 <label for="discord_channel_id">Discord Channel Override</label>
+                <input type="search" id="discord_channel_search" class="select-search-input" placeholder="Search channels…" autocomplete="off" spellcheck="false">
                 <select id="discord_channel_id" name="discord_channel_id" data-selected-channel="<?= e($selectedChannelId) ?>">
                     <option value="">Use default daily channel</option>
                 </select>
@@ -63,6 +64,7 @@ $discordLookupToken = issueDiscordLookupToken();
             </div>
             <div class="field">
                 <label for="discord_mention_role_id">Role to Mention in Daily Listing</label>
+                <input type="search" id="discord_role_search" class="select-search-input" placeholder="Search roles…" autocomplete="off" spellcheck="false">
                 <select id="discord_mention_role_id" name="discord_mention_role_id" data-selected-role="<?= e($selectedMentionRoleId) ?>">
                     <option value="">No role mention</option>
                 </select>
@@ -189,8 +191,10 @@ $discordLookupToken = issueDiscordLookupToken();
     const recurringToggle = document.getElementById('is_recurring_weekly');
     const recurringWrap = document.getElementById('recurring-until-wrap');
     const recurrenceOptionsWrap = document.getElementById('recurrence-options-wrap');
+    const channelSearch = document.getElementById('discord_channel_search');
     const channelSelect = document.getElementById('discord_channel_id');
     const channelStatus = document.getElementById('channel-picker-status');
+    const roleSearch = document.getElementById('discord_role_search');
     const roleSelect = document.getElementById('discord_mention_role_id');
     const roleStatus = document.getElementById('role-picker-status');
     const eventDateInput = document.getElementById('event_date');
@@ -204,6 +208,8 @@ $discordLookupToken = issueDiscordLookupToken();
     const discordLookupToken = <?= json_encode($discordLookupToken) ?>;
     let controller = null;
     let isSyncingTimeFields = false;
+    let channelOptions = [];
+    let roleOptions = [];
 
     if (eventDateInput) {
         ['focus', 'click'].forEach(function (evt) {
@@ -412,52 +418,138 @@ $discordLookupToken = issueDiscordLookupToken();
         });
     }
 
+    function channelTypeLabel(type) {
+        switch (Number(type)) {
+            case 0: return 'Text';
+            case 2: return 'Voice';
+            case 4: return 'Category';
+            case 5: return 'Announcement';
+            default: return 'Channel';
+        }
+    }
+
+    function normaliseSearchText(value) {
+        return String(value || '').toLowerCase().replace(/[#@]/g, '').trim();
+    }
+
+    function renderSearchableSelect(select, options, searchValue) {
+        if (!select) return;
+
+        const selectedValue = select.value || select.getAttribute('data-selected-value') || '';
+        const query = normaliseSearchText(searchValue);
+        const defaultOption = options.length ? options[0] : { value: '', label: 'None', search: '' };
+        let visibleOptions = options;
+
+        if (query !== '') {
+            visibleOptions = options.filter(function (option, index) {
+                if (index === 0 && option.value === '') return true;
+                return normaliseSearchText(option.search || option.label || option.value).indexOf(query) !== -1;
+            });
+        }
+
+        if (!visibleOptions.length) {
+            visibleOptions = [defaultOption];
+        }
+
+        const selectedOption = options.find(function (option) {
+            return String(option.value) === String(selectedValue) && selectedValue !== '';
+        });
+
+        if (selectedOption && !visibleOptions.some(function (option) { return String(option.value) === String(selectedValue); })) {
+            visibleOptions = [defaultOption, selectedOption].concat(visibleOptions.filter(function (option) {
+                return String(option.value) !== String(defaultOption.value);
+            }));
+        }
+
+        select.innerHTML = '';
+        visibleOptions.forEach(function (item) {
+            const option = document.createElement('option');
+            option.value = item.value;
+            option.textContent = item.label;
+            if (item.disabled) option.disabled = true;
+            select.appendChild(option);
+        });
+
+        if (visibleOptions.some(function (option) { return String(option.value) === String(selectedValue); })) {
+            select.value = selectedValue;
+        } else {
+            select.value = defaultOption.value || '';
+        }
+    }
+
+    function bindSearchableSelect(searchInput, select, optionsGetter, statusElement, itemLabel) {
+        if (!searchInput || !select) return;
+
+        searchInput.addEventListener('input', function () {
+            const options = optionsGetter();
+            renderSearchableSelect(select, options, searchInput.value);
+            if (statusElement && searchInput.value.trim() !== '') {
+                const total = Math.max(0, options.length - 1);
+                const visible = Math.max(0, select.options.length - 1);
+                statusElement.textContent = 'Showing ' + visible + ' of ' + total + ' ' + itemLabel + '.';
+            }
+        });
+
+        select.addEventListener('change', function () {
+            select.setAttribute('data-selected-value', select.value || '');
+        });
+    }
+
     function loadMentionRoles() {
         const selectedRole = roleSelect ? (roleSelect.getAttribute('data-selected-role') || '') : '';
+        if (roleSelect) roleSelect.setAttribute('data-selected-value', selectedRole);
+
         fetchJsonWithStatus('api/discord_lookup.php?type=roles')
             .then(function (data) {
                 if (!roleSelect) return;
                 const roles = Array.isArray(data.items) ? data.items : [];
-                roles.forEach(function (role) {
-                    if (!role || !role.id) return;
-                    const option = document.createElement('option');
-                    option.value = role.id;
-                    option.textContent = '@' + (role.name || role.id);
-                    if (String(role.id) === selectedRole) option.selected = true;
-                    roleSelect.appendChild(option);
-                });
-                if (roleStatus) roleStatus.textContent = roles.length ? 'Loaded ' + roles.length + ' roles.' : 'No selectable roles found.';
+                roleOptions = [{ value: '', label: 'No role mention', search: 'no role mention none' }].concat(roles.map(function (role) {
+                    role = role || {};
+                    const name = role.name ? String(role.name) : String(role.id || '');
+                    return {
+                        value: String(role.id || ''),
+                        label: '@' + name,
+                        search: [name, role.id || '', role.mentionable ? 'mentionable' : 'not mentionable'].join(' ')
+                    };
+                }).filter(function (role) { return role.value !== ''; }));
+                renderSearchableSelect(roleSelect, roleOptions, roleSearch ? roleSearch.value : '');
+                if (roleStatus) roleStatus.textContent = roles.length ? 'Loaded ' + roles.length + ' roles. Type above to search.' : 'No selectable roles found.';
             })
             .catch(function (err) {
+                roleOptions = [{ value: '', label: 'No role mention', search: 'no role mention none' }];
+                renderSearchableSelect(roleSelect, roleOptions, '');
                 if (roleStatus) roleStatus.textContent = 'Could not load roles automatically: ' + (err.message || 'Discord lookup failed.');
             });
     }
 
     function loadChannels() {
+        if (!channelSelect) return;
         const selected = channelSelect.getAttribute('data-selected-channel') || '';
+        channelSelect.setAttribute('data-selected-value', selected);
+
         fetchJsonWithStatus('api/discord_lookup.php?type=channels')
             .then(function (data) {
                 const items = Array.isArray(data.items) ? data.items : [];
-                items.forEach(function (item) {
-                    const opt = document.createElement('option');
-                    opt.value = item.id;
-                    opt.textContent = '#' + item.name;
-                    if (selected !== '' && selected === String(item.id)) {
-                        opt.selected = true;
-                    }
-                    channelSelect.appendChild(opt);
-                });
-                channelStatus.textContent = items.length ? 'Loaded ' + items.length + ' channels.' : 'No channels found. You can still use the default channel.';
+                channelOptions = [{ value: '', label: 'Use default daily channel', search: 'default daily channel' }].concat(items.map(function (item) {
+                    item = item || {};
+                    const typeLabel = channelTypeLabel(item.type);
+                    const name = item.name ? String(item.name) : String(item.id || '');
+                    return {
+                        value: String(item.id || ''),
+                        label: '#' + name + ' · ' + typeLabel,
+                        search: [name, item.id || '', typeLabel, item.parent_id || ''].join(' ')
+                    };
+                }).filter(function (channel) { return channel.value !== ''; }));
+                renderSearchableSelect(channelSelect, channelOptions, channelSearch ? channelSearch.value : '');
+                if (channelStatus) channelStatus.textContent = items.length ? 'Loaded ' + items.length + ' channels. Type above to search.' : 'No channels found. You can still use the default channel.';
             })
             .catch(function (err) {
-                const opt = document.createElement('option');
-                opt.value = selected;
-                opt.textContent = selected !== '' ? selected : 'Use default daily channel';
+                channelOptions = [{ value: '', label: 'Use default daily channel', search: 'default daily channel' }];
                 if (selected !== '') {
-                    opt.selected = true;
-                    channelSelect.appendChild(opt);
+                    channelOptions.push({ value: selected, label: selected + ' · previously selected', search: selected });
                 }
-                channelStatus.textContent = 'Could not load channels automatically: ' + err.message;
+                renderSearchableSelect(channelSelect, channelOptions, '');
+                if (channelStatus) channelStatus.textContent = 'Could not load channels automatically: ' + err.message;
             });
     }
 
@@ -522,6 +614,9 @@ $discordLookupToken = issueDiscordLookupToken();
     } else {
         syncUtcFromLocal();
     }
+
+    bindSearchableSelect(channelSearch, channelSelect, function () { return channelOptions; }, channelStatus, 'channels');
+    bindSearchableSelect(roleSearch, roleSelect, function () { return roleOptions; }, roleStatus, 'roles');
 
     if (channelSelect) {
         loadChannels();

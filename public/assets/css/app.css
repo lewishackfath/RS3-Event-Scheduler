@@ -284,6 +284,14 @@ input,textarea,select{
 }
 input::placeholder,textarea::placeholder{color:#8c6b43}
 select{appearance:auto}
+
+.select-search-input{
+    margin-bottom:8px;
+    background:
+        linear-gradient(180deg,rgba(255,248,224,.96),rgba(239,218,174,.96));
+}
+.select-search-input::-webkit-search-cancel-button{cursor:pointer}
+.select-search-input + select{margin-top:0}
 textarea{min-height:110px;resize:vertical}
 input[type="checkbox"],
 input[type="radio"]{
