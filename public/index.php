@@ -8,7 +8,7 @@ function formatEventDurationLabel(?int $minutes): string
 {
     $minutes = (int) $minutes;
     if ($minutes <= 0) {
-        $minutes = max(1, (int) (appConfig()['discord']['default_event_duration_minutes'] ?? 60));
+        $minutes = max(1, (int) (discordSettings()['default_event_duration_minutes'] ?? 60));
     }
 
     $hours = intdiv($minutes, 60);
@@ -274,7 +274,7 @@ renderHeader('Weekly Schedule');
                                 </div>
                                 <div class="event-meta-item">
                                     <div class="event-meta-label">Location</div>
-                                    <div class="event-meta-value"><?= e(($event['event_location'] ?? '') !== '' ? $event['event_location'] : (appConfig()['discord']['event_location_default'] ?? 'RuneScape - In Game')) ?></div>
+                                    <div class="event-meta-value"><?= e(($event['event_location'] ?? '') !== '' ? $event['event_location'] : (discordSettings()['event_location_default'] ?? 'RuneScape - In Game')) ?></div>
                                 </div>
                                 <?php if ($rolesHtml !== ''): ?>
                                     <div class="event-meta-item event-roles-section">

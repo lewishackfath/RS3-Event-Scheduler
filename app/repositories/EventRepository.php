@@ -35,6 +35,9 @@ final class EventRepository
         if (!array_key_exists('status', $row)) {
             $row['status'] = 'scheduled';
         }
+        if (!array_key_exists('create_discord_scheduled_event', $row)) {
+            $row['create_discord_scheduled_event'] = 1;
+        }
 
         return $this->attachRolesToRows([$row])[0] ?? null;
     }
@@ -94,6 +97,9 @@ final class EventRepository
             if (!array_key_exists('status', $row)) {
                 $row['status'] = 'scheduled';
             }
+            if (!array_key_exists('create_discord_scheduled_event', $row)) {
+                $row['create_discord_scheduled_event'] = 1;
+            }
         }
         unset($row);
 
@@ -128,6 +134,9 @@ final class EventRepository
             if (!array_key_exists('status', $row)) {
                 $row['status'] = 'scheduled';
             }
+            if (!array_key_exists('create_discord_scheduled_event', $row)) {
+                $row['create_discord_scheduled_event'] = 1;
+            }
         }
         unset($row);
 
@@ -149,6 +158,7 @@ final class EventRepository
             'thumbnail_url',
             'discord_channel_id',
             'discord_mention_role_id',
+            'create_discord_scheduled_event',
             'create_voice_chat_for_event',
             'is_active',
             'is_recurring_weekly',
@@ -195,6 +205,7 @@ final class EventRepository
             'thumbnail_url',
             'discord_channel_id',
             'discord_mention_role_id',
+            'create_discord_scheduled_event',
             'create_voice_chat_for_event',
             'is_active',
             'is_recurring_weekly',
@@ -276,6 +287,9 @@ final class EventRepository
         foreach ($rows as &$row) {
             if (!array_key_exists('status', $row)) {
                 $row['status'] = 'scheduled';
+            }
+            if (!array_key_exists('create_discord_scheduled_event', $row)) {
+                $row['create_discord_scheduled_event'] = 1;
             }
         }
         unset($row);
@@ -371,6 +385,9 @@ final class EventRepository
         foreach ($rows as &$row) {
             if (!array_key_exists('status', $row)) {
                 $row['status'] = 'scheduled';
+            }
+            if (!array_key_exists('create_discord_scheduled_event', $row)) {
+                $row['create_discord_scheduled_event'] = 1;
             }
         }
         unset($row);
@@ -708,6 +725,7 @@ public function enqueueBotCommand(
             'thumbnail_url' => $data['thumbnail_url'] ?? '',
             'discord_channel_id' => $data['discord_channel_id'],
             'discord_mention_role_id' => ($data['discord_mention_role_id'] ?? '') !== '' ? $data['discord_mention_role_id'] : null,
+            'create_discord_scheduled_event' => !empty($data['create_discord_scheduled_event']) ? 1 : 0,
             'create_voice_chat_for_event' => $data['create_voice_chat_for_event'] ?? 0,
             'is_active' => $data['is_active'],
             'is_recurring_weekly' => $data['is_recurring_weekly'],

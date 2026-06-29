@@ -4,6 +4,8 @@ declare(strict_types=1);
 require_once __DIR__ . '/bootstrap.php';
 require_once __DIR__ . '/partials.php';
 
+$eventDefaults = eventDefaultSettings();
+
 $formValues = [
     'event_name' => '',
     'host_name' => '',
@@ -12,15 +14,16 @@ $formValues = [
     'event_time' => '',
     'event_start_utc_input' => '',
     'event_time_source' => 'local',
-    'duration_minutes' => '',
+    'duration_minutes' => (string) ($eventDefaults['duration_minutes'] ?? ''),
     'discord_channel_id' => '',
     'preferred_roles' => [],
     'discord_mention_role_id' => '',
-    'event_location' => '',
+    'event_location' => (string) ($eventDefaults['event_location'] ?? ''),
     'image_url' => '',
     'thumbnail_url' => '',
     'event_description' => '',
-    'create_voice_chat_for_event' => 0,
+    'create_discord_scheduled_event' => (int) ($eventDefaults['create_discord_scheduled_event'] ?? 1),
+    'create_voice_chat_for_event' => (int) ($eventDefaults['create_voice_chat_for_event'] ?? 0),
     'is_active' => 1,
     'is_recurring_weekly' => 0,
     'recurrence_interval' => 1,

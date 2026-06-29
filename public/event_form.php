@@ -27,6 +27,7 @@ if (!in_array($recurrenceUnit, ['days', 'weeks'], true)) {
     $recurrenceUnit = 'weeks';
 }
 $discordLookupToken = issueDiscordLookupToken();
+$discordSettings = discordSettings();
 ?>
 <div class="card">
     <form method="post">
@@ -61,7 +62,7 @@ $discordLookupToken = issueDiscordLookupToken();
                     <input type="text" id="discord_channel_picker" class="inline-combobox-input" placeholder="Use default daily channel" autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="discord_channel_options">
                     <div id="discord_channel_options" class="inline-combobox-options" role="listbox" hidden></div>
                 </div>
-                <div id="channel-picker-status" class="muted" style="margin-top:6px;">Loading available channels…</div><div class="muted" style="margin-top:6px;">Leave blank to use <code>DISCORD_DAILY_EVENT_CHANNEL_ID</code> from your .env file.</div>
+                <div id="channel-picker-status" class="muted" style="margin-top:6px;">Loading available channels…</div><div class="muted" style="margin-top:6px;">Leave blank to use the default daily event channel from Settings.</div>
             </div>
             <div class="field">
                 <label for="discord_role_picker">Role to Mention in Daily Listing</label>
@@ -117,11 +118,17 @@ $discordLookupToken = issueDiscordLookupToken();
 
         <div class="field">
             <label for="event_location">Location</label>
-            <input type="text" id="event_location" name="event_location" value="<?= e($formValues['event_location'] ?? '') ?>" placeholder="Optional. Falls back to DISCORD_EVENT_LOCATION_DEFAULT if left blank.">
+            <input type="text" id="event_location" name="event_location" value="<?= e($formValues['event_location'] ?? '') ?>" placeholder="Optional. Falls back to the default event location from Settings if left blank.">
         </div>
-        <div class="field">
-            <label><input type="checkbox" name="create_voice_chat_for_event" value="1" <?= !empty($formValues['create_voice_chat_for_event']) ? 'checked' : '' ?>> Create Voice Chat for Event</label>
-            <div class="muted" style="margin-top:6px;">When enabled, the Discord sync will create a temporary voice channel roughly <?= (int) appConfig()['discord']['event_voice_create_before_minutes'] ?> minutes before the event starts, allow everyone to view/join it, and only subscribed event attendees will be able to speak.</div>
+        <div class="grid grid-2">
+            <div class="field">
+                <label><input type="checkbox" name="create_discord_scheduled_event" value="1" <?= !empty($formValues['create_discord_scheduled_event']) ? 'checked' : '' ?>> Create Native Discord Scheduled Event</label>
+                <div class="muted" style="margin-top:6px;">Untick this for events that should still appear on the website and daily embed, but should not create a native Discord scheduled event.</div>
+            </div>
+            <div class="field">
+                <label><input type="checkbox" name="create_voice_chat_for_event" value="1" <?= !empty($formValues['create_voice_chat_for_event']) ? 'checked' : '' ?>> Create Voice Chat for Event</label>
+                <div class="muted" style="margin-top:6px;">When enabled, the Discord sync will create a temporary voice channel roughly <?= (int) $discordSettings['event_voice_create_before_minutes'] ?> minutes before the event starts. Voice access still depends on the native Discord scheduled event subscriber list.</div>
+            </div>
         </div>
         <div class="field">
             <label for="image_url">Event Poster Image URL</label>

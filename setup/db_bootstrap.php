@@ -98,6 +98,7 @@ function runDatabaseBootstrap(bool $verbose = false): void
                 thumbnail_url VARCHAR(1000) NULL,
                 discord_channel_id VARCHAR(32) NULL,
                 discord_mention_role_id VARCHAR(32) NULL,
+                create_discord_scheduled_event TINYINT(1) NOT NULL DEFAULT 1,
                 status VARCHAR(20) NOT NULL DEFAULT "scheduled",
                 is_active TINYINT(1) NOT NULL DEFAULT 1,
                 is_recurring_weekly TINYINT(1) NOT NULL DEFAULT 0,
@@ -134,6 +135,7 @@ function runDatabaseBootstrap(bool $verbose = false): void
             'thumbnail_url' => 'ALTER TABLE clan_events ADD COLUMN thumbnail_url VARCHAR(1000) NULL AFTER image_url',
             'discord_channel_id' => 'ALTER TABLE clan_events ADD COLUMN discord_channel_id VARCHAR(32) NULL AFTER thumbnail_url',
             'discord_mention_role_id' => 'ALTER TABLE clan_events ADD COLUMN discord_mention_role_id VARCHAR(32) NULL AFTER discord_channel_id',
+            'create_discord_scheduled_event' => 'ALTER TABLE clan_events ADD COLUMN create_discord_scheduled_event TINYINT(1) NOT NULL DEFAULT 1 AFTER discord_mention_role_id',
             'status' => 'ALTER TABLE clan_events ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT "scheduled" AFTER discord_mention_role_id',
             'is_active' => 'ALTER TABLE clan_events ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1 AFTER status',
             'is_recurring_weekly' => 'ALTER TABLE clan_events ADD COLUMN is_recurring_weekly TINYINT(1) NOT NULL DEFAULT 0 AFTER is_active',
@@ -336,6 +338,104 @@ if (!indexExists($pdo, 'bot_commands', 'idx_bot_commands_clan')) {
     $pdo->exec('CREATE INDEX idx_bot_commands_clan ON bot_commands (clan_id, created_at_utc)');
     $log('Created idx_bot_commands_clan index.');
 }
+
+
+    if (!tableExists($pdo, 'clan_event_settings')) {
+        $pdo->exec(
+            'CREATE TABLE clan_event_settings (
+                id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                clan_id INT UNSIGNED NOT NULL,
+                setting_key VARCHAR(100) NOT NULL,
+                setting_value TEXT NULL,
+                updated_by_discord_user_id VARCHAR(32) NULL,
+                created_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                CONSTRAINT fk_clan_event_settings_clan FOREIGN KEY (clan_id) REFERENCES clans(id) ON DELETE CASCADE,
+                UNIQUE KEY uniq_clan_event_setting (clan_id, setting_key)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+        );
+        $log('Created clan_event_settings table.');
+    } else {
+        $requiredColumns = [
+            'clan_id' => 'ALTER TABLE clan_event_settings ADD COLUMN clan_id INT UNSIGNED NOT NULL AFTER id',
+            'setting_key' => 'ALTER TABLE clan_event_settings ADD COLUMN setting_key VARCHAR(100) NOT NULL AFTER clan_id',
+            'setting_value' => 'ALTER TABLE clan_event_settings ADD COLUMN setting_value TEXT NULL AFTER setting_key',
+            'updated_by_discord_user_id' => 'ALTER TABLE clan_event_settings ADD COLUMN updated_by_discord_user_id VARCHAR(32) NULL AFTER setting_value',
+            'created_at_utc' => 'ALTER TABLE clan_event_settings ADD COLUMN created_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER updated_by_discord_user_id',
+            'updated_at_utc' => 'ALTER TABLE clan_event_settings ADD COLUMN updated_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at_utc',
+        ];
+
+        foreach ($requiredColumns as $column => $sql) {
+            if (!columnExists($pdo, 'clan_event_settings', $column)) {
+                $pdo->exec($sql);
+                $log('Added clan_event_settings.' . $column . ' column.');
+            }
+        }
+    }
+
+    if (!indexExists($pdo, 'clan_event_settings', 'uniq_clan_event_setting')) {
+        $pdo->exec('CREATE UNIQUE INDEX uniq_clan_event_setting ON clan_event_settings (clan_id, setting_key)');
+        $log('Created uniq_clan_event_setting index.');
+    }
+
+    if (!tableExists($pdo, 'discord_permission_audit')) {
+        $pdo->exec(
+            'CREATE TABLE discord_permission_audit (
+                id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                clan_id INT UNSIGNED NULL,
+                action_key VARCHAR(120) NOT NULL,
+                http_method VARCHAR(12) NOT NULL,
+                endpoint VARCHAR(255) NOT NULL,
+                endpoint_template VARCHAR(255) NOT NULL,
+                required_permissions TEXT NULL,
+                permission_context TEXT NULL,
+                channel_id VARCHAR(32) NULL,
+                guild_id VARCHAR(32) NULL,
+                success TINYINT(1) NOT NULL DEFAULT 0,
+                status_code INT UNSIGNED NULL,
+                discord_error_code VARCHAR(32) NULL,
+                error_message TEXT NULL,
+                created_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_discord_permission_audit_recent (clan_id, created_at_utc),
+                INDEX idx_discord_permission_audit_action (clan_id, action_key)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+        );
+        $log('Created discord_permission_audit table.');
+    } else {
+        $requiredColumns = [
+            'clan_id' => 'ALTER TABLE discord_permission_audit ADD COLUMN clan_id INT UNSIGNED NULL AFTER id',
+            'action_key' => 'ALTER TABLE discord_permission_audit ADD COLUMN action_key VARCHAR(120) NOT NULL AFTER clan_id',
+            'http_method' => 'ALTER TABLE discord_permission_audit ADD COLUMN http_method VARCHAR(12) NOT NULL AFTER action_key',
+            'endpoint' => 'ALTER TABLE discord_permission_audit ADD COLUMN endpoint VARCHAR(255) NOT NULL AFTER http_method',
+            'endpoint_template' => 'ALTER TABLE discord_permission_audit ADD COLUMN endpoint_template VARCHAR(255) NOT NULL AFTER endpoint',
+            'required_permissions' => 'ALTER TABLE discord_permission_audit ADD COLUMN required_permissions TEXT NULL AFTER endpoint_template',
+            'permission_context' => 'ALTER TABLE discord_permission_audit ADD COLUMN permission_context TEXT NULL AFTER required_permissions',
+            'channel_id' => 'ALTER TABLE discord_permission_audit ADD COLUMN channel_id VARCHAR(32) NULL AFTER permission_context',
+            'guild_id' => 'ALTER TABLE discord_permission_audit ADD COLUMN guild_id VARCHAR(32) NULL AFTER channel_id',
+            'success' => 'ALTER TABLE discord_permission_audit ADD COLUMN success TINYINT(1) NOT NULL DEFAULT 0 AFTER guild_id',
+            'status_code' => 'ALTER TABLE discord_permission_audit ADD COLUMN status_code INT UNSIGNED NULL AFTER success',
+            'discord_error_code' => 'ALTER TABLE discord_permission_audit ADD COLUMN discord_error_code VARCHAR(32) NULL AFTER status_code',
+            'error_message' => 'ALTER TABLE discord_permission_audit ADD COLUMN error_message TEXT NULL AFTER discord_error_code',
+            'created_at_utc' => 'ALTER TABLE discord_permission_audit ADD COLUMN created_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER error_message',
+        ];
+
+        foreach ($requiredColumns as $column => $sql) {
+            if (!columnExists($pdo, 'discord_permission_audit', $column)) {
+                $pdo->exec($sql);
+                $log('Added discord_permission_audit.' . $column . ' column.');
+            }
+        }
+    }
+
+    if (!indexExists($pdo, 'discord_permission_audit', 'idx_discord_permission_audit_recent')) {
+        $pdo->exec('CREATE INDEX idx_discord_permission_audit_recent ON discord_permission_audit (clan_id, created_at_utc)');
+        $log('Created idx_discord_permission_audit_recent index.');
+    }
+
+    if (!indexExists($pdo, 'discord_permission_audit', 'idx_discord_permission_audit_action')) {
+        $pdo->exec('CREATE INDEX idx_discord_permission_audit_action ON discord_permission_audit (clan_id, action_key)');
+        $log('Created idx_discord_permission_audit_action index.');
+    }
 
     $clanId = (int) env('CLAN_ID', 0);
     $clanName = (string) env('CLAN_NAME', 'Clan');

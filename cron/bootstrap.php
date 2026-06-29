@@ -7,6 +7,8 @@ require_once dirname(__DIR__) . '/app/lib/helpers.php';
 require_once dirname(__DIR__) . '/app/lib/auth.php';
 require_once dirname(__DIR__) . '/app/lib/time.php';
 require_once dirname(__DIR__) . '/app/repositories/EventRepository.php';
+require_once dirname(__DIR__) . '/app/repositories/SettingsRepository.php';
+require_once dirname(__DIR__) . '/app/lib/settings.php';
 require_once dirname(__DIR__) . '/app/services/EventService.php';
 
 runDatabaseBootstrap(false);

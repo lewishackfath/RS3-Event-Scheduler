@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/time.php';
 require_once __DIR__ . '/helpers.php';
+require_once __DIR__ . '/settings.php';
 
 function hexColourToInt(string $hex): int
 {
@@ -33,7 +34,7 @@ function formatEventDurationLabel(array $event): string
 {
     $durationMinutes = (int) ($event['duration_minutes'] ?? 0);
     if ($durationMinutes <= 0) {
-        $durationMinutes = max(1, (int) appConfig()['discord']['default_event_duration_minutes']);
+        $durationMinutes = max(1, (int) (discordSettings()['default_event_duration_minutes'] ?? 60));
     }
 
     $hours = intdiv($durationMinutes, 60);
@@ -64,7 +65,7 @@ function buildEventEmbed(array $event): array
 
     $location = trim((string) ($event['event_location'] ?? '')) !== ''
         ? (string) $event['event_location']
-        : (string) (appConfig()['discord']['event_location_default'] ?? 'RuneScape - In Game');
+        : (string) (discordSettings()['event_location_default'] ?? 'RuneScape - In Game');
 
     $embed = [
         'title' => (string) $event['event_name'],

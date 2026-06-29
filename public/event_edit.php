@@ -35,6 +35,7 @@ $formValues = [
     'image_url' => $event['image_url'],
     'thumbnail_url' => $event['thumbnail_url'] ?? '',
     'event_description' => $event['event_description'],
+    'create_discord_scheduled_event' => (int) ($event['create_discord_scheduled_event'] ?? 1),
     'create_voice_chat_for_event' => (int) ($event['create_voice_chat_for_event'] ?? 0),
     'is_active' => (int) $event['is_active'],
     'is_recurring_weekly' => (int) ($event['is_recurring_weekly'] ?? 0),

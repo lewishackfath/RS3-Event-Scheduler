@@ -1482,3 +1482,52 @@ code,.inline-code{
         padding-right:2px;
     }
 }
+
+/* Settings and Discord permission audit */
+.settings-section .field{
+    min-width:0;
+}
+.table-scroll{
+    width:100%;
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+}
+.data-table{
+    min-width:880px;
+}
+.data-table code{
+    white-space:nowrap;
+}
+.permission-chip-list{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    align-items:center;
+}
+.permission-chip,
+.status-pill{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    border-radius:999px;
+    padding:6px 10px;
+    font-weight:800;
+    font-size:.86rem;
+    border:1px solid rgba(91,58,26,.24);
+    background:rgba(255,244,210,.48);
+    color:#39220d;
+}
+.status-pill{
+    min-width:62px;
+    justify-content:center;
+}
+.status-ok{
+    background:rgba(47,107,63,.16);
+    color:#235130;
+    border-color:rgba(47,107,63,.34);
+}
+.status-fail{
+    background:rgba(143,47,32,.16);
+    color:#742618;
+    border-color:rgba(143,47,32,.36);
+}

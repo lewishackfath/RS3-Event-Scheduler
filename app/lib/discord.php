@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/time.php';
 require_once __DIR__ . '/helpers.php';
+require_once __DIR__ . '/settings.php';
 
 function discordBotToken(): string
 {
@@ -117,10 +118,270 @@ function verifyDiscordLookupToken(string $token, int $maxAgeSeconds = 21600): bo
 }
 
 
+
+/** @return array<string, array{permissions:array<int,string>,context:string}> */
+function discordPermissionCatalogue(): array
+{
+    return [
+        'lookup_bot_user' => [
+            'permissions' => [],
+            'context' => 'Validates the bot token with Discord.',
+        ],
+        'lookup_guild' => [
+            'permissions' => [],
+            'context' => 'Requires the bot to be in the configured guild.',
+        ],
+        'lookup_guild_channels' => [
+            'permissions' => ['View Channels'],
+            'context' => 'Used to populate channel dropdowns. Channel/category overwrites can still hide individual channels from the bot.',
+        ],
+        'lookup_guild_roles' => [
+            'permissions' => [],
+            'context' => 'Used to populate role dropdowns. Manage Roles is not required just to list roles.',
+        ],
+        'lookup_guild_members' => [
+            'permissions' => [],
+            'context' => 'Used for host search. This also depends on the bot/app being allowed to search guild members.',
+        ],
+        'post_channel_message' => [
+            'permissions' => ['View Channel', 'Send Messages', 'Embed Links'],
+            'context' => 'Posts weekly summaries, daily event embeds, voice warnings, and other bot messages.',
+        ],
+        'post_channel_message_with_files' => [
+            'permissions' => ['View Channel', 'Send Messages', 'Embed Links', 'Attach Files'],
+            'context' => 'Posts the weekly poster gallery as grouped image attachments.',
+        ],
+        'edit_channel_message' => [
+            'permissions' => ['View Channel', 'Send Messages', 'Embed Links'],
+            'context' => 'Edits messages created by this bot. Manage Messages is not required for the bot to edit its own messages.',
+        ],
+        'edit_channel_message_with_files' => [
+            'permissions' => ['View Channel', 'Send Messages', 'Embed Links', 'Attach Files'],
+            'context' => 'Updates the weekly poster gallery message and replaces stale attachments.',
+        ],
+        'delete_channel_message' => [
+            'permissions' => ['View Channel'],
+            'context' => 'Deletes messages created by this bot. Manage Messages is only required if deleting messages created by someone else.',
+        ],
+        'fetch_channel_message' => [
+            'permissions' => ['View Channel', 'Read Message History'],
+            'context' => 'Reads existing reactions on bot-created event posts before syncing preferred role reactions.',
+        ],
+        'add_reaction' => [
+            'permissions' => ['View Channel', 'Read Message History', 'Add Reactions'],
+            'context' => 'Adds preferred-role reaction emojis to event posts. Use External Emoji is also required for external custom emojis.',
+        ],
+        'remove_own_reaction' => [
+            'permissions' => ['View Channel', 'Read Message History'],
+            'context' => 'Removes this bot’s own stale reactions from event posts.',
+        ],
+        'clear_reactions' => [
+            'permissions' => ['View Channel', 'Read Message History', 'Manage Messages'],
+            'context' => 'Only needed if the app clears all reactions from a message rather than just the bot’s own reaction.',
+        ],
+        'create_scheduled_event' => [
+            'permissions' => ['Create Events'],
+            'context' => 'Creates native Discord scheduled events for clan events.',
+        ],
+        'edit_scheduled_event' => [
+            'permissions' => ['Create Events'],
+            'context' => 'Updates native Discord scheduled events created by the bot. Manage Events is only needed for events not created by this bot.',
+        ],
+        'delete_scheduled_event' => [
+            'permissions' => ['Create Events'],
+            'context' => 'Deletes native Discord scheduled events created by the bot. Manage Events is only needed for events not created by this bot.',
+        ],
+        'read_scheduled_event_users' => [
+            'permissions' => [],
+            'context' => 'Reads users interested in a scheduled event so temporary voice channel speaking permissions can be synced.',
+        ],
+        'create_voice_channel' => [
+            'permissions' => ['Manage Channels'],
+            'context' => 'Creates temporary event voice channels. Category overwrites can still block this.',
+        ],
+        'edit_channel_permissions' => [
+            'permissions' => ['Manage Roles'],
+            'context' => 'Sets temporary voice channel permission overwrites for everyone, the host, and event subscribers.',
+        ],
+        'delete_channel_permission' => [
+            'permissions' => ['Manage Roles'],
+            'context' => 'Removes stale temporary voice channel permission overwrites.',
+        ],
+        'delete_channel' => [
+            'permissions' => ['Manage Channels'],
+            'context' => 'Deletes temporary event voice channels after the event ends.',
+        ],
+        'get_voice_state' => [
+            'permissions' => [],
+            'context' => 'Checks whether tracked users are still in a temporary voice channel before cleanup.',
+        ],
+        'mention_roles' => [
+            'permissions' => ['Mention @everyone, @here, and All Roles'],
+            'context' => 'Only required when the bot mentions roles that are not already mentionable.',
+        ],
+    ];
+}
+
+/** @return array{action_key:string,endpoint_template:string,required_permissions:array<int,string>,permission_context:string,channel_id:?string,guild_id:?string} */
+function discordPermissionMetadata(string $method, string $endpoint, array $payload = [], bool $hasFiles = false): array
+{
+    $method = strtoupper($method);
+    $catalogue = discordPermissionCatalogue();
+    $action = 'discord_api_request';
+    $template = $endpoint;
+    $channelId = null;
+    $guildId = null;
+
+    $set = static function (string $key) use (&$action, $catalogue): array {
+        $action = $key;
+        return $catalogue[$key] ?? ['permissions' => [], 'context' => 'Discord API request.'];
+    };
+
+    $entry = ['permissions' => [], 'context' => 'Discord API request.'];
+
+    if (preg_match('#^/users/@me$#', $endpoint)) {
+        $entry = $set('lookup_bot_user');
+    } elseif (preg_match('#^/guilds/(\d+)$#', $endpoint, $m)) {
+        $guildId = $m[1];
+        $template = '/guilds/{guild_id}';
+        $entry = $set('lookup_guild');
+    } elseif (preg_match('#^/guilds/(\d+)/channels$#', $endpoint, $m)) {
+        $guildId = $m[1];
+        $template = '/guilds/{guild_id}/channels';
+        $entry = $method === 'POST' ? $set('create_voice_channel') : $set('lookup_guild_channels');
+    } elseif (preg_match('#^/guilds/(\d+)/roles$#', $endpoint, $m)) {
+        $guildId = $m[1];
+        $template = '/guilds/{guild_id}/roles';
+        $entry = $set('lookup_guild_roles');
+    } elseif (preg_match('#^/guilds/(\d+)/members(?:/search|/\d+)$#', $endpoint, $m)) {
+        $guildId = $m[1];
+        $template = str_contains($endpoint, '/search') ? '/guilds/{guild_id}/members/search' : '/guilds/{guild_id}/members/{user_id}';
+        $entry = $set('lookup_guild_members');
+    } elseif (preg_match('#^/guilds/(\d+)/scheduled-events$#', $endpoint, $m)) {
+        $guildId = $m[1];
+        $template = '/guilds/{guild_id}/scheduled-events';
+        $entry = $method === 'POST' ? $set('create_scheduled_event') : ['permissions' => [], 'context' => 'Lists guild scheduled events.'];
+    } elseif (preg_match('#^/guilds/(\d+)/scheduled-events/(\d+)$#', $endpoint, $m)) {
+        $guildId = $m[1];
+        $template = '/guilds/{guild_id}/scheduled-events/{scheduled_event_id}';
+        $entry = $method === 'PATCH' ? $set('edit_scheduled_event') : ($method === 'DELETE' ? $set('delete_scheduled_event') : ['permissions' => [], 'context' => 'Reads a native Discord scheduled event.']);
+    } elseif (preg_match('#^/guilds/(\d+)/scheduled-events/(\d+)/users$#', $endpoint, $m)) {
+        $guildId = $m[1];
+        $template = '/guilds/{guild_id}/scheduled-events/{scheduled_event_id}/users';
+        $entry = $set('read_scheduled_event_users');
+    } elseif (preg_match('#^/guilds/(\d+)/voice-states/(\d+)$#', $endpoint, $m)) {
+        $guildId = $m[1];
+        $template = '/guilds/{guild_id}/voice-states/{user_id}';
+        $entry = $set('get_voice_state');
+    } elseif (preg_match('#^/channels/(\d+)$#', $endpoint, $m)) {
+        $channelId = $m[1];
+        $template = '/channels/{channel_id}';
+        $entry = $method === 'DELETE' ? $set('delete_channel') : ['permissions' => ['View Channel'], 'context' => 'Reads channel metadata such as category and permission overwrites.'];
+    } elseif (preg_match('#^/channels/(\d+)/messages$#', $endpoint, $m)) {
+        $channelId = $m[1];
+        $template = '/channels/{channel_id}/messages';
+        $entry = $hasFiles ? $set('post_channel_message_with_files') : $set('post_channel_message');
+    } elseif (preg_match('#^/channels/(\d+)/messages/(\d+)$#', $endpoint, $m)) {
+        $channelId = $m[1];
+        $template = '/channels/{channel_id}/messages/{message_id}';
+        if ($method === 'GET') {
+            $entry = $set('fetch_channel_message');
+        } elseif ($method === 'PATCH') {
+            $entry = $hasFiles ? $set('edit_channel_message_with_files') : $set('edit_channel_message');
+        } elseif ($method === 'DELETE') {
+            $entry = $set('delete_channel_message');
+        }
+    } elseif (preg_match('#^/channels/(\d+)/messages/(\d+)/reactions/([^/]+)/@me$#', $endpoint, $m)) {
+        $channelId = $m[1];
+        $template = '/channels/{channel_id}/messages/{message_id}/reactions/{emoji}/@me';
+        $entry = $method === 'PUT' ? $set('add_reaction') : $set('remove_own_reaction');
+    } elseif (preg_match('#^/channels/(\d+)/messages/(\d+)/reactions$#', $endpoint, $m)) {
+        $channelId = $m[1];
+        $template = '/channels/{channel_id}/messages/{message_id}/reactions';
+        $entry = $set('clear_reactions');
+    } elseif (preg_match('#^/channels/(\d+)/permissions/(\d+)$#', $endpoint, $m)) {
+        $channelId = $m[1];
+        $template = '/channels/{channel_id}/permissions/{overwrite_id}';
+        $entry = $method === 'DELETE' ? $set('delete_channel_permission') : $set('edit_channel_permissions');
+    }
+
+    $permissions = array_values(array_unique(array_map('strval', $entry['permissions'] ?? [])));
+    $context = (string) ($entry['context'] ?? 'Discord API request.');
+
+    $allowedMentions = (array) ($payload['allowed_mentions'] ?? []);
+    $mentionedRoles = (array) ($allowedMentions['roles'] ?? []);
+    $content = (string) ($payload['content'] ?? '');
+    if ($mentionedRoles !== [] || preg_match('/<@&\d{15,32}>/', $content)) {
+        $mention = $catalogue['mention_roles'];
+        $permissions = array_values(array_unique(array_merge($permissions, $mention['permissions'])));
+        $context .= ' ' . $mention['context'];
+    }
+
+    return [
+        'action_key' => $action,
+        'endpoint_template' => $template,
+        'required_permissions' => $permissions,
+        'permission_context' => $context,
+        'channel_id' => $channelId,
+        'guild_id' => $guildId,
+    ];
+}
+
+function logDiscordPermissionObservation(string $method, string $endpoint, array $metadata, bool $success, int $statusCode = 0, ?array $decoded = null, string $rawError = ''): void
+{
+    try {
+        if (!function_exists('db') || !function_exists('currentClanId')) {
+            return;
+        }
+
+        $errorCode = null;
+        $errorMessage = $rawError;
+        if (is_array($decoded)) {
+            if (isset($decoded['code'])) {
+                $errorCode = (string) $decoded['code'];
+            }
+            if (isset($decoded['message'])) {
+                $errorMessage = (string) $decoded['message'];
+            }
+        }
+
+        $stmt = db()->prepare(
+            'INSERT INTO discord_permission_audit (
+                clan_id, action_key, http_method, endpoint, endpoint_template,
+                required_permissions, permission_context, channel_id, guild_id,
+                success, status_code, discord_error_code, error_message, created_at_utc
+             ) VALUES (
+                :clan_id, :action_key, :http_method, :endpoint, :endpoint_template,
+                :required_permissions, :permission_context, :channel_id, :guild_id,
+                :success, :status_code, :discord_error_code, :error_message, UTC_TIMESTAMP()
+             )'
+        );
+        $stmt->execute([
+            'clan_id' => currentClanId() > 0 ? currentClanId() : null,
+            'action_key' => (string) ($metadata['action_key'] ?? 'discord_api_request'),
+            'http_method' => strtoupper($method),
+            'endpoint' => mb_substr($endpoint, 0, 255),
+            'endpoint_template' => mb_substr((string) ($metadata['endpoint_template'] ?? $endpoint), 0, 255),
+            'required_permissions' => implode(', ', (array) ($metadata['required_permissions'] ?? [])),
+            'permission_context' => (string) ($metadata['permission_context'] ?? ''),
+            'channel_id' => $metadata['channel_id'] ?? null,
+            'guild_id' => $metadata['guild_id'] ?? null,
+            'success' => $success ? 1 : 0,
+            'status_code' => $statusCode > 0 ? $statusCode : null,
+            'discord_error_code' => $errorCode,
+            'error_message' => $errorMessage !== '' ? mb_substr($errorMessage, 0, 65535) : null,
+        ]);
+    } catch (Throwable $e) {
+        // Permission logging should never break the actual Discord action.
+    }
+}
+
 function discordApiRequest(string $method, string $endpoint, array $payload = [], array $query = []): array
 {
+    $metadata = discordPermissionMetadata($method, $endpoint, $payload, false);
     $token = discordBotToken();
     if ($token === '') {
+        logDiscordPermissionObservation($method, $endpoint, $metadata, false, 0, null, 'DISCORD_BOT_TOKEN is not configured.');
         throw new RuntimeException('DISCORD_BOT_TOKEN is not configured.');
     }
 
@@ -160,14 +421,17 @@ function discordApiRequest(string $method, string $endpoint, array $payload = []
     curl_close($ch);
 
     if ($response === false) {
+        logDiscordPermissionObservation($method, $endpoint, $metadata, false, 0, null, 'cURL error ' . $errorNumber . ': ' . $error);
         throw new RuntimeException('Discord API request failed: cURL error ' . $errorNumber . ': ' . $error);
     }
 
     if ($statusCode === 0) {
+        logDiscordPermissionObservation($method, $endpoint, $metadata, false, 0, null, 'No HTTP response from Discord. cURL error ' . $errorNumber . ': ' . $error);
         throw new RuntimeException('Discord API request failed: no HTTP response from Discord. cURL error ' . $errorNumber . ': ' . $error);
     }
 
     $decoded = json_decode($response, true);
+    logDiscordPermissionObservation($method, $endpoint, $metadata, $statusCode >= 200 && $statusCode < 300, $statusCode, is_array($decoded) ? $decoded : null, is_array($decoded) ? '' : $response);
     if ($statusCode < 200 || $statusCode >= 300) {
         $message = is_array($decoded) ? json_encode($decoded, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : $response;
         throw new RuntimeException('Discord API error (' . $statusCode . '): ' . $message);
@@ -179,8 +443,10 @@ function discordApiRequest(string $method, string $endpoint, array $payload = []
 
 function discordApiMultipartRequest(string $method, string $endpoint, array $payload = [], array $files = [], array $query = []): array
 {
+    $metadata = discordPermissionMetadata($method, $endpoint, $payload, $files !== []);
     $token = discordBotToken();
     if ($token === '') {
+        logDiscordPermissionObservation($method, $endpoint, $metadata, false, 0, null, 'DISCORD_BOT_TOKEN is not configured.');
         throw new RuntimeException('DISCORD_BOT_TOKEN is not configured.');
     }
 
@@ -239,14 +505,17 @@ function discordApiMultipartRequest(string $method, string $endpoint, array $pay
     curl_close($ch);
 
     if ($response === false) {
+        logDiscordPermissionObservation($method, $endpoint, $metadata, false, 0, null, 'cURL error ' . $errorNumber . ': ' . $error);
         throw new RuntimeException('Discord API request failed: cURL error ' . $errorNumber . ': ' . $error);
     }
 
     if ($statusCode === 0) {
+        logDiscordPermissionObservation($method, $endpoint, $metadata, false, 0, null, 'No HTTP response from Discord. cURL error ' . $errorNumber . ': ' . $error);
         throw new RuntimeException('Discord API request failed: no HTTP response from Discord. cURL error ' . $errorNumber . ': ' . $error);
     }
 
     $decoded = json_decode($response, true);
+    logDiscordPermissionObservation($method, $endpoint, $metadata, $statusCode >= 200 && $statusCode < 300, $statusCode, is_array($decoded) ? $decoded : null, is_array($decoded) ? '' : $response);
     if ($statusCode < 200 || $statusCode >= 300) {
         $message = is_array($decoded) ? json_encode($decoded, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : $response;
         throw new RuntimeException('Discord API error (' . $statusCode . '): ' . $message);
@@ -567,7 +836,7 @@ function buildDiscordScheduledEventPayload(array $event, ?string $locationOverri
 {
     $durationMinutes = (int) ($event['duration_minutes'] ?? 0);
     if ($durationMinutes <= 0) {
-        $durationMinutes = max(1, (int) appConfig()['discord']['default_event_duration_minutes']);
+        $durationMinutes = max(1, (int) discordSettings()['default_event_duration_minutes']);
     }
 
     $startUtc = new DateTimeImmutable((string) $event['event_start_utc'], utcTimezone());
@@ -587,7 +856,7 @@ function buildDiscordScheduledEventPayload(array $event, ?string $locationOverri
         $payload['channel_id'] = $voiceChannelId;
         $payload['entity_metadata'] = null;
     } else {
-        $location = trim((string) ($locationOverride ?? ($event['event_location'] ?? '') ?? appConfig()['discord']['event_location_default'] ?? ''));
+        $location = trim((string) ($locationOverride ?? ($event['event_location'] ?? '') ?? discordSettings()['event_location_default'] ?? ''));
         if ($location === '') {
             $location = 'RuneScape - In Game';
         }

@@ -70,6 +70,7 @@ final class EventService
             'discord_channel_id' => trim((string) ($input['discord_channel_id'] ?? '')),
             'discord_mention_role_id' => $this->normaliseDiscordSnowflake((string) ($input['discord_mention_role_id'] ?? '')),
             'preferred_roles' => $this->normalisePreferredRoles(is_array($input['preferred_roles'] ?? null) ? $input['preferred_roles'] : []),
+            'create_discord_scheduled_event' => isset($input['create_discord_scheduled_event']) ? 1 : 0,
             'create_voice_chat_for_event' => isset($input['create_voice_chat_for_event']) ? 1 : 0,
             'is_active' => isset($input['is_active']) ? 1 : 0,
             // Column name kept for backwards compatibility. It now means "is recurring".

@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../lib/discord.php';
 require_once __DIR__ . '/../lib/event_embeds.php';
+require_once __DIR__ . '/../lib/settings.php';
 require_once __DIR__ . '/../repositories/EventRepository.php';
 
 final class DiscordPostingService
@@ -321,14 +322,16 @@ final class DiscordPostingService
 
     private function syncSingleEvent(array $event, bool $allowDailyCronCreation): array
     {
-        $config = appConfig()['discord'];
+        $config = discordSettings();
         $eventResults = [];
         $scheduledEventUrl = '';
         $hasExistingScheduledEvent = trim((string) ($event['discord_scheduled_event_id'] ?? '')) !== '';
         $hasExistingDailyPost = trim((string) ($event['discord_daily_channel_id'] ?? '')) !== ''
             && trim((string) ($event['discord_daily_message_id'] ?? '')) !== '';
 
-        if ((bool) $config['enable_scheduled_events']) {
+        $eventAllowsScheduledEvent = (int) ($event['create_discord_scheduled_event'] ?? 1) === 1;
+
+        if ((bool) $config['enable_scheduled_events'] && $eventAllowsScheduledEvent) {
             if ($allowDailyCronCreation || $hasExistingScheduledEvent || $this->hasEventEnded($event) || (string) ($event['status'] ?? 'scheduled') === 'cancelled') {
                 [$scheduledEventUrl, $scheduledMessage] = $this->syncScheduledEvent($event);
                 $eventResults[] = $scheduledMessage;
@@ -336,15 +339,23 @@ final class DiscordPostingService
             } else {
                 $eventResults[] = 'Skipped native Discord event: only created by daily cron';
             }
+        } elseif ($hasExistingScheduledEvent) {
+            $eventResults[] = $this->removeTrackedScheduledEvent(
+                $event,
+                $eventAllowsScheduledEvent ? 'global scheduled event creation is disabled' : 'disabled for this event'
+            );
+            $event = $this->events->getById((int) $event['id']) ?? $event;
         } else {
-            $eventResults[] = 'Scheduled event creation disabled';
+            $eventResults[] = $eventAllowsScheduledEvent
+                ? 'Scheduled event creation disabled globally'
+                : 'Native Discord event disabled for this event';
         }
 
         [$voiceMessage, $requiresScheduledResync] = $this->syncEventVoiceChannel($event);
         if ($voiceMessage !== '') {
             $eventResults[] = $voiceMessage;
         }
-        if ($requiresScheduledResync && (bool) $config['enable_scheduled_events']) {
+        if ($requiresScheduledResync && (bool) $config['enable_scheduled_events'] && $eventAllowsScheduledEvent) {
             $event = $this->events->getById((int) $event['id']) ?? $event;
             [$scheduledEventUrl, $scheduledMessage] = $this->syncScheduledEvent($event);
             $eventResults[] = $scheduledMessage;
@@ -371,18 +382,18 @@ final class DiscordPostingService
 
     private function postOrUpdateWeeklySummaryForWeek(?string $date, bool $createIfMissing): array
     {
-        $config = appConfig()['discord'];
+        $config = discordSettings();
         if (!(bool) $config['enable_weekly_summary']) {
             return [[
                 'scope' => 'weekly_summary',
                 'status' => 'skipped',
-                'message' => 'Weekly summary posting is disabled in .env.',
+                'message' => 'Weekly summary posting is disabled in Settings.',
             ]];
         }
 
         $channelId = trim((string) $config['weekly_summary_channel_id']);
         if ($channelId === '') {
-            throw new RuntimeException('DISCORD_WEEKLY_SUMMARY_CHANNEL_ID is not configured.');
+            throw new RuntimeException('Weekly summary channel is not configured in Settings or .env.');
         }
 
         $range = weekRangeFromDate($date);
@@ -744,6 +755,25 @@ final class DiscordPostingService
         }
     }
 
+    private function removeTrackedScheduledEvent(array $event, string $reason): string
+    {
+        $scheduledEventId = trim((string) ($event['discord_scheduled_event_id'] ?? ''));
+        if ($scheduledEventId === '') {
+            return 'No native Discord event to remove';
+        }
+
+        try {
+            deleteScheduledEvent($scheduledEventId);
+        } catch (Throwable $e) {
+            if (!$this->isUnknownDiscordResourceError($e)) {
+                throw $e;
+            }
+        }
+
+        $this->events->clearScheduledEventTracking((int) $event['id']);
+        return 'Removed native Discord event: ' . $reason;
+    }
+
     private function syncScheduledEvent(array $event): array
     {
         $scheduledEventId = trim((string) ($event['discord_scheduled_event_id'] ?? ''));
@@ -751,7 +781,7 @@ final class DiscordPostingService
         $eventStartUtc = new DateTimeImmutable((string) $event['event_start_utc'], utcTimezone());
         $durationMinutes = (int) ($event['duration_minutes'] ?? 0);
         if ($durationMinutes <= 0) {
-            $durationMinutes = max(1, (int) appConfig()['discord']['default_event_duration_minutes']);
+            $durationMinutes = max(1, (int) discordSettings()['default_event_duration_minutes']);
         }
         $eventEndUtc = $eventStartUtc->modify('+' . $durationMinutes . ' minutes');
         $nowUtc = new DateTimeImmutable('now', utcTimezone());
@@ -852,7 +882,7 @@ final class DiscordPostingService
         $stmt->execute(['clan_id' => currentClanId()]);
 
         $rows = $stmt->fetchAll() ?: [];
-        $deleteAfterMinutes = max(0, (int) appConfig()['discord']['event_voice_delete_after_end_minutes']);
+        $deleteAfterMinutes = max(0, (int) discordSettings()['event_voice_delete_after_end_minutes']);
         $nowUtc = new DateTimeImmutable('now', utcTimezone());
 
         foreach ($rows as $event) {
@@ -924,7 +954,7 @@ final class DiscordPostingService
 
         if (!$this->shouldVoiceChannelExist($event)) {
             if ($voiceChannelId !== '' && $this->hasEventEnded($event)) {
-                $deleteAfterMinutes = max(0, (int) appConfig()['discord']['event_voice_delete_after_end_minutes']);
+                $deleteAfterMinutes = max(0, (int) discordSettings()['event_voice_delete_after_end_minutes']);
                 return ['Kept event voice channel open until ' . $deleteAfterMinutes . ' minutes after the event ends', false];
             }
             return ['Waiting until voice channel window opens', false];
@@ -953,7 +983,7 @@ final class DiscordPostingService
 
 private function sendVoiceDeleteWarningMessageIfDue(array $event, DateTimeImmutable $deleteAtUtc, DateTimeImmutable $nowUtc): ?array
 {
-    $warningBeforeMinutes = max(0, (int) appConfig()['discord']['event_voice_warning_before_delete_minutes']);
+    $warningBeforeMinutes = max(0, (int) discordSettings()['event_voice_warning_before_delete_minutes']);
     if ($warningBeforeMinutes <= 0) {
         return null;
     }
@@ -1009,7 +1039,7 @@ private function sendVoiceDeleteWarningMessageIfDue(array $event, DateTimeImmuta
     private function shouldVoiceChannelExist(array $event): bool
     {
         $startUtc = new DateTimeImmutable((string) $event['event_start_utc'], utcTimezone());
-        $leadMinutes = max(0, (int) appConfig()['discord']['event_voice_create_before_minutes']);
+        $leadMinutes = max(0, (int) discordSettings()['event_voice_create_before_minutes']);
         $createAtUtc = $startUtc->modify('-' . $leadMinutes . ' minutes');
         $nowUtc = new DateTimeImmutable('now', utcTimezone());
 
@@ -1038,7 +1068,7 @@ private function sendVoiceDeleteWarningMessageIfDue(array $event, DateTimeImmuta
 
     private function resolveVoiceCategoryId(array $event): ?string
     {
-        $configured = trim((string) appConfig()['discord']['event_voice_category_id']);
+        $configured = trim((string) discordSettings()['event_voice_category_id']);
         if ($configured !== '') {
             return $configured;
         }
@@ -1144,7 +1174,7 @@ private function sendVoiceDeleteWarningMessageIfDue(array $event, DateTimeImmuta
     {
         $durationMinutes = (int) ($event['duration_minutes'] ?? 0);
         if ($durationMinutes <= 0) {
-            $durationMinutes = max(1, (int) appConfig()['discord']['default_event_duration_minutes']);
+            $durationMinutes = max(1, (int) discordSettings()['default_event_duration_minutes']);
         }
 
         $endUtc = (new DateTimeImmutable((string) $event['event_start_utc'], utcTimezone()))
@@ -1158,7 +1188,7 @@ private function sendVoiceDeleteWarningMessageIfDue(array $event, DateTimeImmuta
     {
         $durationMinutes = (int) ($event['duration_minutes'] ?? 0);
         if ($durationMinutes <= 0) {
-            $durationMinutes = max(1, (int) appConfig()['discord']['default_event_duration_minutes']);
+            $durationMinutes = max(1, (int) discordSettings()['default_event_duration_minutes']);
         }
 
         return (new DateTimeImmutable((string) $event['event_start_utc'], utcTimezone()))
@@ -1170,7 +1200,7 @@ private function sendVoiceDeleteWarningMessageIfDue(array $event, DateTimeImmuta
     {
         $channelId = trim((string) ($event['discord_channel_id'] ?? ''));
         if ($channelId === '') {
-            $channelId = trim((string) (appConfig()['discord']['daily_event_channel_id'] ?? ''));
+            $channelId = trim((string) (discordSettings()['daily_event_channel_id'] ?? ''));
         }
         if ($channelId === '') {
             $channelId = trim((string) (appConfig()['clan']['default_discord_channel_id'] ?? ''));

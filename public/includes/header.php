@@ -31,6 +31,8 @@ function renderHeader(string $title): void
     echo '<a class="nav-link ' . ($currentPage === 'index.php' ? 'active' : '') . '" href="index.php">Schedule</a>';
     if (isAuthenticated()) {
         echo '<a class="nav-link ' . ($currentPage === 'post_schedule.php' ? 'active' : '') . '" href="post_schedule.php">Discord Publishing</a>';
+        echo '<a class="nav-link ' . ($currentPage === 'settings.php' ? 'active' : '') . '" href="settings.php">Settings</a>';
+        echo '<a class="nav-link ' . ($currentPage === 'discord_permissions.php' ? 'active' : '') . '" href="discord_permissions.php">Permissions</a>';
     }
     echo '</div>';
     echo '</div></div>';

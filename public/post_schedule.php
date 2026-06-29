@@ -48,7 +48,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 function publishingStatusText(array $event): string
 {
     $daily = !empty($event['discord_daily_message_id']) ? 'Daily post created' : 'Daily post pending';
-    $native = !empty($event['discord_scheduled_event_id']) ? 'Discord event created' : 'Discord event pending';
+    if ((int) ($event['create_discord_scheduled_event'] ?? 1) !== 1) {
+        $native = 'Discord event disabled for this event';
+    } else {
+        $native = !empty($event['discord_scheduled_event_id']) ? 'Discord event created' : 'Discord event pending';
+    }
 
     return $daily . ' • ' . $native;
 }
