@@ -382,15 +382,25 @@ if (!in_array($recurrenceUnit, ['days', 'weeks'], true)) {
     }
 
     function fetchJsonWithStatus(url) {
-        return fetch(url).then(function (response) {
-            return response.json().then(function (data) {
-                return { ok: response.ok, data: data };
-            }).catch(function () {
-                return { ok: response.ok, data: {} };
+        return fetch(url, {
+            headers: {
+                'Accept': 'application/json'
+            }
+        }).then(function (response) {
+            return response.text().then(function (text) {
+                let data = {};
+                try {
+                    data = text ? JSON.parse(text) : {};
+                } catch (err) {
+                    const excerpt = text ? text.replace(/\s+/g, ' ').trim().slice(0, 260) : '';
+                    const suffix = excerpt ? ' Non-JSON response: ' + excerpt : ' Empty response body.';
+                    throw new Error('Discord lookup endpoint returned HTTP ' + response.status + '.' + suffix);
+                }
+                return { ok: response.ok, status: response.status, data: data, redirected: response.redirected };
             });
         }).then(function (payload) {
             if (!payload.ok) {
-                throw new Error(payload.data && payload.data.error ? payload.data.error : 'Discord lookup failed.');
+                throw new Error(payload.data && payload.data.error ? payload.data.error : 'Discord lookup failed with HTTP ' + payload.status + '.');
             }
             return payload.data;
         });

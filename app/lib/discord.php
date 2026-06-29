@@ -58,10 +58,15 @@ function discordApiRequest(string $method, string $endpoint, array $payload = []
     $response = curl_exec($ch);
     $statusCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $error = curl_error($ch);
+    $errorNumber = curl_errno($ch);
     curl_close($ch);
 
     if ($response === false) {
-        throw new RuntimeException('Discord API request failed: ' . $error);
+        throw new RuntimeException('Discord API request failed: cURL error ' . $errorNumber . ': ' . $error);
+    }
+
+    if ($statusCode === 0) {
+        throw new RuntimeException('Discord API request failed: no HTTP response from Discord. cURL error ' . $errorNumber . ': ' . $error);
     }
 
     $decoded = json_decode($response, true);
@@ -132,10 +137,15 @@ function discordApiMultipartRequest(string $method, string $endpoint, array $pay
     $response = curl_exec($ch);
     $statusCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $error = curl_error($ch);
+    $errorNumber = curl_errno($ch);
     curl_close($ch);
 
     if ($response === false) {
-        throw new RuntimeException('Discord API request failed: ' . $error);
+        throw new RuntimeException('Discord API request failed: cURL error ' . $errorNumber . ': ' . $error);
+    }
+
+    if ($statusCode === 0) {
+        throw new RuntimeException('Discord API request failed: no HTTP response from Discord. cURL error ' . $errorNumber . ': ' . $error);
     }
 
     $decoded = json_decode($response, true);
